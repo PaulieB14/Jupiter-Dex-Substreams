@@ -1,20 +1,47 @@
 # Rust
-target/
+/target/
+**/*.rs.bk
 Cargo.lock
 
 # Substreams
 *.spkg
-*.wasm
+/target/
+/.substreams/
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
 # OS
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
 
 # Logs
 *.log
+logs/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Build artifacts
+dist/
+build/
+*.o
+*.so
+*.dylib
+*.dll
+*.exe
+
+# Generated files
+src/pb/
+!src/pb/mod.rs
