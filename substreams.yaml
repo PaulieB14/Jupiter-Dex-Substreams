@@ -1,0 +1,30 @@
+specVersion: v0.1.0
+
+package:
+  name: jupiter_dex_events
+  version: v0.1.2
+  doc: |
+    Jupiter DEX aggregator events substream for Solana.
+    
+    Tracks Jupiter swap events, limit orders, DCA, and aggregation events across all Jupiter programs.
+  url: https://github.com/jupiter-substream/jupiter-substream
+  image: /Users/paulbarba/Desktop/jup.png
+
+network: solana
+
+binaries:
+  default:
+    type: wasm/rust-v1
+    file: target/wasm32-unknown-unknown/release/jupiter_substream.wasm
+
+modules:
+  - name: jupiter_events
+    kind: map
+    inputs:
+      - source: sf.solana.type.v1.Block
+    output:
+      type: proto:jupiter.events.v1.JupiterEvents
+
+protobuf:
+  files:
+    - jupiter/events/v1/events.proto

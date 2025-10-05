@@ -1,0 +1,171 @@
+syntax = "proto3";
+
+package jupiter.events.v1;
+
+option go_package = "github.com/jupiter-substream/jupiter/events/v1;eventsv1";
+
+// Jupiter program IDs
+message JupiterPrograms {
+  string jupiter_swap_v6 = 1;        // JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4
+  string jupiter_swap_v4 = 2;        // JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB
+  string jupiter_swap_v3 = 3;        // JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB
+  string jupiter_swap_v2 = 4;        // JUP3c2Uh3WA4Ng34tw6kPd2G4C5BB21Xo36Je1s32Ph
+  string jupiter_swap_v1 = 5;        // JUP2jxvXaqu7NQY1GmNF4m1vodw12LVXYxbFL2uJvfo
+  string jupiter_limit_order = 6;    // jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu
+  string jupiter_dca = 7;           // DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M
+}
+
+// Main Jupiter events container
+message JupiterEvents {
+  repeated SwapEvent swap_events = 1;
+  repeated LimitOrderEvent limit_order_events = 2;
+  repeated DCAEvent dca_events = 3;
+  repeated AggregationEvent aggregation_events = 4;
+  uint64 block_number = 5;
+  string block_hash = 6;
+  uint64 timestamp = 7;
+}
+
+// Swap events from Jupiter
+message SwapEvents {
+  repeated SwapEvent events = 1;
+  uint64 block_number = 2;
+  string block_hash = 3;
+  uint64 timestamp = 4;
+}
+
+message SwapEvent {
+  string transaction_signature = 1;
+  string user = 2;
+  string input_mint = 3;
+  string output_mint = 4;
+  uint64 input_amount = 5;
+  uint64 output_amount = 6;
+  uint64 minimum_amount_out = 7;
+  uint64 price_impact_pips = 8;
+  repeated SwapRoute routes = 9;
+  string program_id = 10;
+  uint64 slot = 11;
+  uint64 timestamp = 12;
+  string version = 13; // v1, v2, v3, v4, v6
+  SwapStatus status = 14;
+  string error_message = 15;
+}
+
+message SwapRoute {
+  string dex = 1;
+  string program_id = 2;
+  string input_mint = 3;
+  string output_mint = 4;
+  uint64 input_amount = 5;
+  uint64 output_amount = 6;
+  uint64 price_impact_pips = 7;
+  repeated string accounts = 8;
+}
+
+// Limit Order events
+message LimitOrderEvents {
+  repeated LimitOrderEvent events = 1;
+  uint64 block_number = 2;
+  string block_hash = 3;
+  uint64 timestamp = 4;
+}
+
+message LimitOrderEvent {
+  string transaction_signature = 1;
+  string user = 2;
+  string order_id = 3;
+  string input_mint = 4;
+  string output_mint = 5;
+  uint64 input_amount = 6;
+  uint64 output_amount = 7;
+  uint64 price = 8;
+  LimitOrderType order_type = 9;
+  LimitOrderStatus status = 10;
+  uint64 slot = 11;
+  uint64 timestamp = 12;
+  string error_message = 13;
+}
+
+// DCA (Dollar Cost Averaging) events
+message DCAEvents {
+  repeated DCAEvent events = 1;
+  uint64 block_number = 2;
+  string block_hash = 3;
+  uint64 timestamp = 4;
+}
+
+message DCAEvent {
+  string transaction_signature = 1;
+  string user = 2;
+  string dca_id = 3;
+  string input_mint = 4;
+  string output_mint = 5;
+  uint64 amount_per_interval = 6;
+  uint64 interval_seconds = 7;
+  uint64 next_execution = 8;
+  DCAStatus status = 9;
+  uint64 slot = 10;
+  uint64 timestamp = 11;
+  string error_message = 12;
+}
+
+// Aggregation events (routing decisions, arbitrage opportunities)
+message AggregationEvents {
+  repeated AggregationEvent events = 1;
+  uint64 block_number = 2;
+  string block_hash = 3;
+  uint64 timestamp = 4;
+}
+
+message AggregationEvent {
+  string transaction_signature = 1;
+  string user = 2;
+  repeated string available_dexs = 3;
+  string selected_route = 4;
+  repeated string alternative_routes = 5;
+  uint64 price_impact_pips = 6;
+  uint64 estimated_slippage = 7;
+  AggregationType type = 8;
+  uint64 slot = 9;
+  uint64 timestamp = 10;
+}
+
+// Enums
+enum SwapStatus {
+  SWAP_STATUS_UNKNOWN = 0;
+  SWAP_STATUS_PENDING = 1;
+  SWAP_STATUS_SUCCESS = 2;
+  SWAP_STATUS_FAILED = 3;
+  SWAP_STATUS_CANCELLED = 4;
+}
+
+enum LimitOrderType {
+  LIMIT_ORDER_TYPE_UNKNOWN = 0;
+  LIMIT_ORDER_TYPE_BUY = 1;
+  LIMIT_ORDER_TYPE_SELL = 2;
+}
+
+enum LimitOrderStatus {
+  LIMIT_ORDER_STATUS_UNKNOWN = 0;
+  LIMIT_ORDER_STATUS_PENDING = 1;
+  LIMIT_ORDER_STATUS_FILLED = 2;
+  LIMIT_ORDER_STATUS_CANCELLED = 3;
+  LIMIT_ORDER_STATUS_EXPIRED = 4;
+}
+
+enum DCAStatus {
+  DCA_STATUS_UNKNOWN = 0;
+  DCA_STATUS_ACTIVE = 1;
+  DCA_STATUS_PAUSED = 2;
+  DCA_STATUS_COMPLETED = 3;
+  DCA_STATUS_CANCELLED = 4;
+}
+
+enum AggregationType {
+  AGGREGATION_TYPE_UNKNOWN = 0;
+  AGGREGATION_TYPE_ROUTE_SELECTION = 1;
+  AGGREGATION_TYPE_ARBITRAGE = 2;
+  AGGREGATION_TYPE_LIQUIDITY_OPTIMIZATION = 3;
+  AGGREGATION_TYPE_SLIPPAGE_PROTECTION = 4;
+}
