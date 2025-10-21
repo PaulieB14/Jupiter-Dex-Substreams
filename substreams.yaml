@@ -1,7 +1,8 @@
 specVersion: v0.1.0
 package:
   name: jupiter-dex-substreams
-  version: v0.1.0
+  version: v0.3.0
+  image: assets/icon.jpg
 
 network: solana
 
