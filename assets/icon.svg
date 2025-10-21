@@ -1,0 +1,39 @@
+<svg width="64" height="64" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle with gradient -->
+  <circle cx="32" cy="32" r="32" fill="url(#gradient1)"/>
+  
+  <!-- Jupiter planet -->
+  <circle cx="32" cy="32" r="20" fill="url(#gradient2)" stroke="#FFD700" stroke-width="2"/>
+  
+  <!-- Jupiter's bands -->
+  <ellipse cx="32" cy="28" rx="18" ry="3" fill="#8B4513" opacity="0.7"/>
+  <ellipse cx="32" cy="36" rx="18" ry="3" fill="#8B4513" opacity="0.7"/>
+  
+  <!-- DEX symbols around Jupiter -->
+  <circle cx="20" cy="20" r="4" fill="#00D4AA" stroke="#fff" stroke-width="1"/>
+  <circle cx="44" cy="20" r="4" fill="#00D4AA" stroke="#fff" stroke-width="1"/>
+  <circle cx="20" cy="44" r="4" fill="#00D4AA" stroke="#fff" stroke-width="1"/>
+  <circle cx="44" cy="44" r="4" fill="#00D4AA" stroke="#fff" stroke-width="1"/>
+  
+  <!-- Central Jupiter symbol -->
+  <text x="32" y="38" text-anchor="middle" fill="#FFD700" font-family="Arial, sans-serif" font-size="12" font-weight="bold">J</text>
+  
+  <!-- Substreams connection lines -->
+  <line x1="20" y1="20" x2="28" y2="28" stroke="#fff" stroke-width="1" opacity="0.6"/>
+  <line x1="44" y1="20" x2="36" y2="28" stroke="#fff" stroke-width="1" opacity="0.6"/>
+  <line x1="20" y1="44" x2="28" y2="36" stroke="#fff" stroke-width="1" opacity="0.6"/>
+  <line x1="44" y1="44" x2="36" y2="36" stroke="#fff" stroke-width="1" opacity="0.6"/>
+  
+  <!-- Gradients -->
+  <defs>
+    <linearGradient id="gradient1" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#16213e;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="gradient2" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#FFD700;stop-opacity:1" />
+      <stop offset="50%" style="stop-color:#FFA500;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#FF8C00;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+</svg>
