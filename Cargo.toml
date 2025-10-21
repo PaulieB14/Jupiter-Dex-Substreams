@@ -25,5 +25,9 @@ hex = "0.4"
 base64 = "0.21"
 bs58 = "0.5"
 
+# JWT Testing dependencies
+jsonwebtoken = "9.2"
+chrono = { version = "0.4", features = ["serde"] }
+
 [build-dependencies]
 prost-build = "0.12"
