@@ -1,0 +1,35 @@
+specVersion: v0.1.0
+package:
+  name: jupiter-dex-substreams-jwt-test
+  version: v0.2.0
+
+network: solana
+
+imports:
+  solana_common: solana-common@v0.3.0
+  spl_initialized_account: spl-initialized-account@v0.1.2
+
+modules:
+  # JWT Test Module - Tests foundational store access with authentication
+  - name: map_jwt_test
+    kind: map
+    initialBlock: 31310775
+    inputs:
+      - map: solana_common:transactions_by_programid_without_votes
+      - foundational-store: spl-initialized-account@v0.1.2
+      - foundational-store: jupiter-trading-data@v0.1.0
+      - foundational-store: token-prices@v0.1.0
+    output:
+      type: proto:sf.jupiter.v1.JwtTestResults
+
+  # JWT Authentication Test
+  - name: map_jwt_auth_test
+    kind: map
+    initialBlock: 31310775
+    inputs:
+      - map: solana_common:transactions_by_programid_without_votes
+    output:
+      type: proto:sf.jupiter.v1.JwtAuthResults
+
+params:
+  solana_common:transactions_by_programid_without_votes: "program:JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 || program:JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB || program:JUP3c2Uh3WA4Ng34tw6kPd2G4C5BB21Xo36Je1s32Ph || program:TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA || program:TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
