@@ -3,45 +3,36 @@
 **/*.rs.bk
 Cargo.lock
 
-# Substreams
-*.spkg
-/target/
-/.substreams/
-
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
 
 # OS
 .DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
 Thumbs.db
+
+# Environment variables (SECURITY: Never commit JWT tokens)
+.env
+.env.local
+.env.production
+.env.staging
+
+# JWT tokens and API keys
+*.jwt
+*.token
+api-keys.txt
+secrets.txt
 
 # Logs
 *.log
 logs/
 
-# Environment
-.env
-.env.local
-.env.*.local
-
 # Build artifacts
 dist/
 build/
-*.o
-*.so
-*.dylib
-*.dll
-*.exe
 
-# Generated files
-src/pb/
-!src/pb/mod.rs
+# Temporary files
+*.tmp
+*.temp
