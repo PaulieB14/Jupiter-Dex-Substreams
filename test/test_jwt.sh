@@ -2,6 +2,7 @@
 
 # JWT Test Script for Jupiter DEX Substreams
 # This script tests the foundational store integration with JWT authentication
+# SECURITY: Never commit JWT tokens to the repository
 
 set -e
 
@@ -12,6 +13,12 @@ if [ -z "$SUBSTREAMS_API_TOKEN" ]; then
     echo "❌ Error: SUBSTREAMS_API_TOKEN environment variable is not set"
     echo "Please set your JWT token:"
     echo "export SUBSTREAMS_API_TOKEN='your-jwt-token-here'"
+    echo ""
+    echo "To get a JWT token:"
+    echo "1. Visit https://substreams.dev"
+    echo "2. Login to your account"
+    echo "3. Generate an API token"
+    echo "4. Set it as an environment variable"
     exit 1
 fi
 
