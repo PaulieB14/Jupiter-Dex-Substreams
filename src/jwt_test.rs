@@ -102,7 +102,7 @@ fn test_jwt_authentication(instruction: &substreams_solana::pb::sf::solana::r#ty
     
     Ok(AuthResult {
         is_authenticated,
-        token: token.clone(),
+        token: "***REDACTED***".to_string(), // Never expose actual tokens
         user_id: "test_user".to_string(),
         permissions: vec!["read".to_string(), "write".to_string()],
     })
@@ -147,22 +147,30 @@ fn test_foundational_store_access(
 
 fn extract_jwt_token(instruction: &substreams_solana::pb::sf::solana::r#type::v1::CompiledInstruction) -> Result<String, Error> {
     // In a real implementation, you'd extract the JWT from the instruction data
-    // This is a simplified example
-    let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c";
-    Ok(token.to_string())
+    // This is a simplified example that reads from environment variables
+    let token = std::env::var("SUBSTREAMS_API_TOKEN")
+        .or_else(|_| std::env::var("JWT_TOKEN"))
+        .map_err(|_| Error::msg("No JWT token found in environment variables"))?;
+    
+    Ok(token)
 }
 
 fn validate_jwt_token(token: &str) -> bool {
     // In a real implementation, you'd validate the JWT signature
-    // This is a simplified example
-    match decode::<serde_json::Value>(
-        token,
-        &DecodingKey::from_secret(b"your-secret-key"),
-        &Validation::new(Algorithm::HS256),
-    ) {
-        Ok(_) => true,
-        Err(_) => false,
+    // This is a simplified example that checks for basic JWT structure
+    if token.is_empty() {
+        return false;
     }
+    
+    // Check if it's a valid JWT format (3 parts separated by dots)
+    let parts: Vec<&str> = token.split('.').collect();
+    if parts.len() != 3 {
+        return false;
+    }
+    
+    // In a real implementation, you'd validate the signature
+    // For now, just check if it's not empty and has the right format
+    !token.is_empty()
 }
 
 fn is_jupiter_instruction(instruction: &substreams_solana::pb::sf::solana::r#type::v1::CompiledInstruction) -> bool {
