@@ -1,0 +1,72 @@
+syntax = "proto3";
+
+package sf.jupiter.v1;
+
+option go_package = "github.com/JupiterExchange/substreams/sf/jupiter/v1;jupiterv1";
+
+message TradingData {
+  string program_id = 1;
+  string transaction_id = 2;
+  repeated string accounts = 3;
+  bytes data = 4;
+  uint64 slot = 5;
+  uint64 block_time = 6;
+}
+
+message TokenPrice {
+  string mint_address = 1;
+  double price_usd = 2;
+  double volume_24h = 3;
+  double price_change_24h = 4;
+  uint64 slot = 5;
+}
+
+message EnrichedAccount {
+  string address = 1;
+  string owner = 2;
+  string mint = 3;
+}
+
+message AccountOwnerRecord {
+  bytes account = 1;
+  bytes mint = 2;
+  bytes owner = 3;
+}
+
+message AccountOwnerRecords {
+  repeated AccountOwnerRecord records = 1;
+}
+
+message TradingDataList {
+  repeated TradingData items = 1;
+}
+
+message TokenPriceList {
+  repeated TokenPrice items = 1;
+}
+
+message JupiterInstruction {
+  string program_id = 1;
+  string transaction_id = 2;
+  repeated EnrichedAccount accounts = 3;
+  bytes data = 4;
+  uint64 slot = 5;
+  uint64 block_time = 6;
+}
+
+message JupiterInstructions {
+  repeated JupiterInstruction instructions = 1;
+}
+
+message ProgramStat {
+  string program_id = 1;
+  uint64 instruction_count = 2;
+}
+
+message JupiterAnalytics {
+  uint64 total_instructions = 1;
+  uint64 unique_accounts = 2;
+  uint64 unique_mints = 3;
+  repeated ProgramStat top_programs = 4;
+}
+

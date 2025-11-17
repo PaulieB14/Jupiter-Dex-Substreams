@@ -1,69 +1,64 @@
 specVersion: v0.1.0
 package:
   name: jupiter-dex-substreams
-  version: v0.3.0
-  image: assets/icon.jpg
+  version: v0.3.1
+  image: assets/icon.png
+
+binaries:
+  default:
+    type: wasm/rust-v1
+    file: ./target/wasm32-unknown-unknown/release/jupiter_dex_substreams.wasm
+
+protobuf:
+  files:
+    - jupiter/events/v1/events.proto
+    - proto/sf/jupiter/v1/types.proto
+  importPaths:
+    - jupiter
+    - proto
 
 network: solana
 
-imports:
-  solana_common: solana-common@v0.3.0
-  spl_initialized_account: spl-initialized-account@v0.1.2
-
 modules:
-  # SPL Account Owner Store (Producer)
   - name: map_spl_initialized_account
     kind: map
     initialBlock: 31310775
     inputs:
-      - params: string
-      - map: solana_common:transactions_by_programid_without_votes
+      - source: sf.solana.type.v1.Block
     output:
-      type: proto:sf.substreams.foundational_store.v1.Entries
+      type: proto:sf.jupiter.v1.AccountOwnerRecords
 
-  # Jupiter Trading Data Store (Producer)
   - name: map_jupiter_trading_data
     kind: map
     initialBlock: 31310775
     inputs:
-      - params: string
-      - map: solana_common:transactions_by_programid_without_votes
+      - source: sf.solana.type.v1.Block
     output:
-      type: proto:sf.substreams.foundational_store.v1.Entries
+      type: proto:sf.jupiter.v1.TradingDataList
 
-  # Token Price Store (Producer)
   - name: map_token_prices
     kind: map
     initialBlock: 31310775
     inputs:
-      - params: string
-      - map: solana_common:transactions_by_programid_without_votes
+      - map: map_jupiter_trading_data
     output:
-      type: proto:sf.substreams.foundational_store.v1.Entries
+      type: proto:sf.jupiter.v1.TokenPriceList
 
-  # Jupiter Instructions with Account Owner Resolution (Consumer)
   - name: map_jupiter_instructions
     kind: map
     initialBlock: 31310775
     inputs:
-      - map: solana_common:transactions_by_programid_without_votes
-      - foundational-store: spl-initialized-account@v0.1.2
-      - foundational-store: jupiter-trading-data@v0.1.0
-      - foundational-store: token-prices@v0.1.0
+      - source: sf.solana.type.v1.Block
+      - map: map_spl_initialized_account
+      - map: map_jupiter_trading_data
+      - map: map_token_prices
     output:
       type: proto:sf.jupiter.v1.JupiterInstructions
 
-  # Jupiter Analytics with Historical Data (Consumer)
   - name: map_jupiter_analytics
     kind: map
     initialBlock: 31310775
     inputs:
-      - map: solana_common:transactions_by_programid_without_votes
-      - foundational-store: spl-initialized-account@v0.1.2
-      - foundational-store: jupiter-trading-data@v0.1.0
-      - foundational-store: token-prices@v0.1.0
+      - map: map_jupiter_instructions
     output:
       type: proto:sf.jupiter.v1.JupiterAnalytics
-
-params:
-  solana_common:transactions_by_programid_without_votes: "program:JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 || program:JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB || program:JUP3c2Uh3WA4Ng34tw6kPd2G4C5BB21Xo36Je1s32Ph || program:TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA || program:TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"

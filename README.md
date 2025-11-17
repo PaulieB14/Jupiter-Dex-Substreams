@@ -49,11 +49,14 @@ substreams run jupiter-dex-events@v0.1.2 jupiter_events \
 git clone https://github.com/PaulieB14/Jupiter-Dex-Substreams.git
 cd Jupiter-Dex-Substreams
 
-# Build the substream
+# Build the WASM + package
 substreams build
 
-# Run tests
-substreams run substreams.yaml jupiter_events \
+# (Optional) compile-check without packaging
+cargo check --target wasm32-unknown-unknown
+
+# Run a module locally (e.g. enriched Jupiter instructions)
+substreams run substreams.yaml map_jupiter_instructions \
   -e mainnet.sol.streamingfast.io:443 \
   -s 325766951 -t +1
 ```

@@ -16,6 +16,13 @@ pub mod jupiter {
     }
 }
 pub mod sf {
+    pub mod jupiter {
+        // @@protoc_insertion_point(attribute:sf.jupiter.v1)
+        pub mod v1 {
+            include!("sf.jupiter.v1.rs");
+            // @@protoc_insertion_point(sf.jupiter.v1)
+        }
+    }
     // @@protoc_insertion_point(attribute:sf.substreams)
     pub mod substreams {
         include!("sf.substreams.rs");

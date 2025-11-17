@@ -1,129 +1,128 @@
-use substreams::prelude::*;
-use substreams::store::FoundationalStore;
-use substreams_solana::pb::sf::solana::r#type::v1::Transactions;
-use substreams_solana::pb::sf::substreams::solana::spl::v1::AccountOwner;
-use substreams_solana::pb::sf::substreams::foundational_store::v1::ResponseCode;
-use prost::Message;
+use std::collections::{HashMap, HashSet};
+
+use crate::constants::JUPITER_PROGRAM_IDS;
+use crate::pb::sf::jupiter::v1::{
+    AccountOwnerRecords, EnrichedAccount, JupiterInstruction, JupiterInstructions, TokenPriceList,
+    TradingDataList,
+};
+use substreams::errors::Error;
+use substreams_solana::{base58, pb::sf::solana::r#type::v1::Block};
 
 #[substreams::handlers::map]
-fn map_jupiter_instructions(
-    transactions: Transactions,
-    account_owner_store: FoundationalStore,
-    trading_data_store: FoundationalStore,
-    token_price_store: FoundationalStore,
+pub fn map_jupiter_instructions(
+    block: Block,
+    owner_records: AccountOwnerRecords,
+    trading_data: TradingDataList,
+    token_prices: TokenPriceList,
 ) -> Result<JupiterInstructions, Error> {
-    let mut instructions = Vec::new();
+    let owner_index = build_owner_index(owner_records);
+    let price_index = build_price_index(token_prices);
+    let trades_by_tx = group_trades_by_tx(trading_data);
 
-    for confirmed_trx in successful_transactions(&transactions) {
-        for instruction in confirmed_trx.walk_instructions() {
-            if is_jupiter_instruction(&instruction) {
-                if let Ok(jupiter_instruction) = process_jupiter_instruction(
-                    instruction,
-                    &account_owner_store,
-                    &trading_data_store,
-                    &token_price_store,
-                ) {
-                    instructions.push(jupiter_instruction);
+    let mut instructions = Vec::new();
+    let block_time = block
+        .block_time
+        .as_ref()
+        .map(|ts| ts.timestamp.max(0) as u64)
+        .unwrap_or_default();
+
+    for trx in block.transactions() {
+        let tx_id = trx.id();
+        let trade_data = trades_by_tx.get(&tx_id);
+
+        for instruction in trx.walk_instructions() {
+            let program_id = instruction.program_id().to_string();
+            if !is_jupiter_program(&program_id) {
+                continue;
+            }
+
+            let enriched_accounts = instruction
+                .accounts()
+                .iter()
+                .map(|address| enrich_account(address.to_string(), &owner_index, &price_index))
+                .collect::<Vec<_>>();
+
+            let mut data = instruction.data().clone();
+            if data.is_empty() {
+                if let Some(trades) = trade_data {
+                    if let Some(first_trade) = trades.first() {
+                        data = first_trade.data.clone();
+                    }
                 }
             }
+
+            instructions.push(JupiterInstruction {
+                program_id,
+                transaction_id: tx_id.clone(),
+                accounts: enriched_accounts,
+                data,
+                slot: block.slot,
+                block_time,
+            });
         }
     }
 
     Ok(JupiterInstructions { instructions })
 }
 
-fn process_jupiter_instruction(
-    instruction: &substreams_solana::pb::sf::solana::r#type::v1::CompiledInstruction,
-    account_owner_store: &FoundationalStore,
-    trading_data_store: &FoundationalStore,
-    token_price_store: &FoundationalStore,
-) -> Result<JupiterInstruction, Error> {
-    // Extract account addresses that need owner lookup
-    let account_keys: Vec<Vec<u8>> = instruction.accounts.iter()
-        .map(|addr| addr.as_bytes().to_vec())
-        .collect();
-
-    // Batch query foundational store for account owners
-    let response = account_owner_store.get_all(&account_keys);
-
-    let mut enriched_accounts = Vec::new();
-    
-    // Process responses and decode account owner data
-    for (i, entry) in response.entries.iter().enumerate() {
-        if let Some(response) = &entry.response {
-            if response.response == ResponseCode::Found as i32 {
-                if let Some(value) = &response.value {
-                    if let Ok(account_owner) = AccountOwner::decode(&value.value) {
-                        let owner_address = bs58::encode(&account_owner.owner).into_string();
-                        let mint_address = bs58::encode(&account_owner.mint_address).into_string();
-                        
-                        enriched_accounts.push(EnrichedAccount {
-                            address: instruction.accounts[i].clone(),
-                            owner: owner_address,
-                            mint: mint_address,
-                        });
-                    }
-                }
-            }
-        }
-    }
-
-    // Query trading data and token prices for additional context
-    let trading_key = format!("jupiter_trade_{}", hex::encode(&instruction.accounts[0]));
-    let price_key = format!("token_price_{}", hex::encode(&instruction.accounts[0]));
-
-    let jupiter_instruction = JupiterInstruction {
-        program_id: instruction.accounts[instruction.program_id_index as usize].clone(),
-        accounts: enriched_accounts,
-        data: instruction.data.clone(),
-        timestamp: std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_secs(),
-        // Add more enriched data from foundational stores
-    };
-
-    Ok(jupiter_instruction)
-}
-
-fn is_jupiter_instruction(instruction: &substreams_solana::pb::sf::solana::r#type::v1::CompiledInstruction) -> bool {
-    instruction.program_id_index < instruction.accounts.len() &&
-    (instruction.accounts[instruction.program_id_index as usize] == "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4" ||
-     instruction.accounts[instruction.program_id_index as usize] == "JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB" ||
-     instruction.accounts[instruction.program_id_index as usize] == "JUP3c2Uh3WA4Ng34tw6kPd2G4C5BB21Xo36Je1s32Ph")
-}
-
-fn successful_transactions(transactions: &Transactions) -> Vec<&substreams_solana::pb::sf::solana::r#type::v1::ConfirmedTransaction> {
-    transactions.transactions.iter()
-        .filter_map(|tx| tx.transaction.as_ref())
-        .filter_map(|tx| tx.meta.as_ref())
-        .filter(|meta| meta.err.is_none())
-        .map(|tx| tx)
+fn build_owner_index(records: AccountOwnerRecords) -> HashMap<String, (String, String)> {
+    records
+        .records
+        .into_iter()
+        .map(|record| {
+            let account = base58::encode(&record.account);
+            let owner = base58::encode(&record.owner);
+            let mint = base58::encode(&record.mint);
+            (account, (owner, mint))
+        })
         .collect()
 }
 
-// Define Jupiter-specific structs
-#[derive(Clone, PartialEq, Message)]
-pub struct JupiterInstructions {
-    #[prost(message, repeated, tag = "1")]
-    pub instructions: Vec<JupiterInstruction>,
+fn build_price_index(token_prices: TokenPriceList) -> HashSet<String> {
+    token_prices
+        .items
+        .into_iter()
+        .map(|price| price.mint_address)
+        .collect()
 }
 
-#[derive(Clone, PartialEq, Message)]
-pub struct JupiterInstruction {
-    #[prost(string, tag = "1")]
-    pub program_id: String,
-    #[prost(message, repeated, tag = "2")]
-    pub accounts: Vec<EnrichedAccount>,
-    #[prost(bytes, tag = "3")]
-    pub data: Vec<u8>,
-    #[prost(uint64, tag = "4")]
-    pub timestamp: u64,
+fn group_trades_by_tx(trading_data: TradingDataList) -> HashMap<String, Vec<crate::pb::sf::jupiter::v1::TradingData>> {
+    let mut map: HashMap<String, Vec<_>> = HashMap::new();
+    for trade in trading_data.items {
+        map.entry(trade.transaction_id.clone())
+            .or_default()
+            .push(trade);
+    }
+    map
 }
 
-#[derive(Clone, PartialEq, Message)]
-pub struct EnrichedAccount {
-    #[prost(string, tag = "1")]
-    pub address: String,
-    #[prost(string, tag = "2")]
-    pub owner: String,
-    #[prost(string, tag = "3")]
-    pub mint: String,
+fn enrich_account(
+    address: String,
+    owner_index: &HashMap<String, (String, String)>,
+    price_index: &HashSet<String>,
+) -> EnrichedAccount {
+    if let Some((owner, mint)) = owner_index.get(&address) {
+        return EnrichedAccount {
+            address,
+            owner: owner.clone(),
+            mint: mint.clone(),
+        };
+    }
+
+    let mint = if price_index.contains(&address) {
+        address.clone()
+    } else {
+        String::new()
+    };
+
+    EnrichedAccount {
+        address,
+        owner: String::new(),
+        mint,
+    }
 }
+
+fn is_jupiter_program(program_id: &str) -> bool {
+    JUPITER_PROGRAM_IDS.iter().any(|entry| entry == &program_id)
+}
+
