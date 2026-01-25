@@ -1,6 +1,6 @@
 # Jupiter DEX Events Substream
 
-[![Substreams](https://img.shields.io/badge/Substreams-v0.3.2-blue)](https://substreams.dev/packages/jupiter-dex-substreams/v0.3.2)
+[![Substreams](https://img.shields.io/badge/Substreams-v0.3.3-blue)](https://substreams.dev/packages/jupiter-dex-substreams/v0.3.3)
 [![Solana](https://img.shields.io/badge/Network-Solana-purple)](https://solana.com)
 [![Jupiter](https://img.shields.io/badge/DEX-Jupiter-orange)](https://jup.ag)
 [![Performance](https://img.shields.io/badge/Performance-75%25%20Faster-green)](https://docs.substreams.dev)
@@ -40,8 +40,8 @@ This substream provides complete visibility into Jupiter's DEX aggregation ecosy
 # Install Substreams CLI
 curl -sSL https://substreams.dev/install.sh | bash
 
-# Run Jupiter events (v0.3.2)
-substreams run https://github.com/PaulieB14/Jupiter-Dex-Substreams/releases/download/v0.3.2/jupiter-dex-substreams-v0.3.2.spkg \
+# Run Jupiter events (v0.3.3)
+substreams run https://github.com/PaulieB14/Jupiter-Dex-Substreams/releases/download/v0.3.3/jupiter-dex-substreams-v0.3.3.spkg \
   map_jupiter_instructions \
   -e mainnet.sol.streamingfast.io:443 \
   -s 325766951 -t +1
@@ -158,25 +158,23 @@ This substream is built using:
 - **Solana Common v0.3.0** for foundational modules
 - **Block Filtering** for efficient data processing
 
-## 🆕 What's New in v0.3.2
+## 🆕 What's New in v0.3.3
 
-### Performance Improvements
-- ✅ Integrated solana-common v0.3.0 foundational modules
-- ✅ Added block-level filtering for Jupiter programs
-- ✅ 75% data reduction by excluding voting transactions
-- ✅ 3-5x query performance improvement
+### Swap Amount Parsing
+- ✅ Parse Jupiter v6 instruction data for swap amounts
+- ✅ Extract `amount_in`, `amount_out`, `input_mint`, `output_mint`
+- ✅ Support for Route, SharedAccountsRoute, ExactOutRoute instructions
+- ✅ Volume tracking with `total_volume` and `total_swaps`
 
-### New Features
-- ✅ `store_swap_volumes` - Track trading volumes by token pair
-- ✅ `store_unique_traders` - Monitor unique wallet addresses
-- ✅ Parameterized program ID filtering
-- ✅ Enhanced module reusability
+### Foundational Modules
+- ✅ Integrated solana-common v0.3.1 foundational modules
+- ✅ Block-level filtering via `blockFilter` for 75% data reduction
+- ✅ Only processes blocks containing Jupiter transactions
 
-### Technical Improvements
-- ✅ Shared caching via foundational stores
-- ✅ Reduced infrastructure costs
-- ✅ Better error handling
-- ✅ Improved parallel processing
+### New Proto Fields
+- ✅ `TradingData`: amount_in, amount_out, input_mint, output_mint, user_wallet
+- ✅ `JupiterAnalytics`: total_volume, total_swaps
+- ✅ `ProgramStat`: total_volume per program
 
 ## 📚 Documentation
 
@@ -201,7 +199,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🔗 Links
 
-- **Substreams Package**: https://substreams.dev/packages/jupiter-dex-substreams/v0.3.2
+- **Substreams Package**: https://substreams.dev/packages/jupiter-dex-substreams/v0.3.3
 - **GitHub Repository**: https://github.com/PaulieB14/Jupiter-Dex-Substreams
 - **Jupiter Website**: https://jup.ag
 - **Solana Website**: https://solana.com
