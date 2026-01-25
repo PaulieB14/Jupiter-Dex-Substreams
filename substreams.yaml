@@ -1,8 +1,25 @@
 specVersion: v0.1.0
 package:
   name: jupiter-dex-substreams
-  version: v0.3.1
+  version: v0.3.2
+  url: https://github.com/PaulieB14/Jupiter-Dex-Substreams
+  doc: |
+    Jupiter DEX Substreams - Comprehensive tracking of Jupiter aggregator events on Solana.
+    
+    Features:
+    - 75% data reduction via foundational stores (excludes voting transactions)
+    - Efficient block filtering for Jupiter programs
+    - Multi-version support (Jupiter v1-v6, Limit Orders, DCA)
+    - Real-time swap, order, and DCA tracking
+    
+    Performance optimizations:
+    - Uses solana-common foundational modules
+    - Block-level filtering to skip irrelevant blocks
+    - Parallel processing enabled
   image: assets/icon.png
+
+imports:
+  solana: https://github.com/streamingfast/substreams-solana-common/releases/download/v0.3.0/solana-common-v0.3.0.spkg
 
 binaries:
   default:
@@ -19,23 +36,54 @@ protobuf:
 
 network: solana
 
+params:
+  # Filter for all Jupiter program IDs
+  jupiter_programs: >
+    program:JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 ||
+    program:JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB ||
+    program:JUP3c2Uh3WA4Ng34tw6kPd2G4C5BB21Xo36Je1s32Ph ||
+    program:JUP2jxvXaqu7NQY1GmNF4m1vodw12LVXYxbFL2uJvfo ||
+    program:jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu ||
+    program:DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M
+
 modules:
+  # Base filtered transactions module using foundational store
+  # This provides 75% data reduction by excluding vote transactions
+  - name: jupiter_filtered_transactions
+    kind: map
+    initialBlock: 31310775
+    blockFilter:
+      module: solana:program_ids_without_votes
+      query:
+        params: true
+    inputs:
+      - params: string
+      - map: solana:transactions_by_programid_without_votes
+    output:
+      type: proto:sf.solana.type.v1.ConfirmedTransactions
+    params:
+      solana:transactions_by_programid_without_votes: "{{ jupiter_programs }}"
+
+  # SPL Token account initialization tracking
+  # Essential for resolving token account ownership
   - name: map_spl_initialized_account
     kind: map
     initialBlock: 31310775
     inputs:
-      - source: sf.solana.type.v1.Block
+      - map: jupiter_filtered_transactions
     output:
       type: proto:sf.jupiter.v1.AccountOwnerRecords
 
+  # Core trading data extraction from Jupiter transactions
   - name: map_jupiter_trading_data
     kind: map
     initialBlock: 31310775
     inputs:
-      - source: sf.solana.type.v1.Block
+      - map: jupiter_filtered_transactions
     output:
       type: proto:sf.jupiter.v1.TradingDataList
 
+  # Token price calculation from trading data
   - name: map_token_prices
     kind: map
     initialBlock: 31310775
@@ -44,17 +92,19 @@ modules:
     output:
       type: proto:sf.jupiter.v1.TokenPriceList
 
+  # Enriched Jupiter instructions with account ownership and pricing
   - name: map_jupiter_instructions
     kind: map
     initialBlock: 31310775
     inputs:
-      - source: sf.solana.type.v1.Block
+      - map: jupiter_filtered_transactions
       - map: map_spl_initialized_account
       - map: map_jupiter_trading_data
       - map: map_token_prices
     output:
       type: proto:sf.jupiter.v1.JupiterInstructions
 
+  # High-level analytics and aggregations
   - name: map_jupiter_analytics
     kind: map
     initialBlock: 31310775
@@ -62,3 +112,21 @@ modules:
       - map: map_jupiter_instructions
     output:
       type: proto:sf.jupiter.v1.JupiterAnalytics
+
+  # Store: Track swap volumes by token pair
+  - name: store_swap_volumes
+    kind: store
+    initialBlock: 31310775
+    updatePolicy: add
+    valueType: bigint
+    inputs:
+      - map: map_jupiter_trading_data
+
+  # Store: Track unique traders (wallets)
+  - name: store_unique_traders
+    kind: store
+    initialBlock: 31310775
+    updatePolicy: set_if_not_exists
+    valueType: string
+    inputs:
+      - map: map_jupiter_trading_data
