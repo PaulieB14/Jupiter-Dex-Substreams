@@ -1,9 +1,12 @@
 [package]
 name = "jupiter-dex-substreams"
-version = "0.2.0"
+version = "0.3.2"
 edition = "2021"
-description = "Substreams modules for parsing Jupiter DEX activity on Solana"
+description = "High-performance Substreams for Jupiter DEX with 75% data reduction via foundational stores"
 license = "MIT"
+repository = "https://github.com/PaulieB14/Jupiter-Dex-Substreams"
+keywords = ["solana", "jupiter", "dex", "substreams", "blockchain"]
+categories = ["cryptography::cryptocurrencies"]
 
 [lib]
 crate-type = ["cdylib"]
@@ -13,11 +16,16 @@ crate-type = ["cdylib"]
 substreams = "0.7"
 substreams-solana = "0.14.2"
 
-# Additional dependencies for Jupiter DEX
+# Protobuf serialization
 prost = "0.13"
 prost-types = "0.13"
+
+# Utility dependencies
 anyhow = "1.0"
 hex = "0.4"
 bs58 = "0.5"
 
-# JWT Testing dependencies
+[profile.release]
+lto = true
+opt-level = 'z'
+strip = true
