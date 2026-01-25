@@ -4,6 +4,28 @@ package sf.jupiter.v1;
 
 option go_package = "github.com/JupiterExchange/substreams/sf/jupiter/v1;jupiterv1";
 
+// Parsed Jupiter swap data with amounts
+message SwapData {
+  string transaction_id = 1;
+  string program_id = 2;
+  string input_mint = 3;
+  string output_mint = 4;
+  uint64 amount_in = 5;
+  uint64 amount_out = 6;
+  uint64 minimum_amount_out = 7;
+  string user_wallet = 8;
+  uint64 slot = 9;
+  uint64 block_time = 10;
+  string swap_type = 11;  // "route", "shared_accounts_route", "exact_out", etc.
+}
+
+message SwapDataList {
+  repeated SwapData swaps = 1;
+  uint64 total_volume_in = 2;
+  uint64 total_volume_out = 3;
+  uint32 swap_count = 4;
+}
+
 message TradingData {
   string program_id = 1;
   string transaction_id = 2;
@@ -11,6 +33,12 @@ message TradingData {
   bytes data = 4;
   uint64 slot = 5;
   uint64 block_time = 6;
+  // Parsed swap fields
+  uint64 amount_in = 7;
+  uint64 amount_out = 8;
+  string input_mint = 9;
+  string output_mint = 10;
+  string user_wallet = 11;
 }
 
 message TokenPrice {
@@ -39,6 +67,8 @@ message AccountOwnerRecords {
 
 message TradingDataList {
   repeated TradingData items = 1;
+  uint64 total_volume = 2;
+  uint32 swap_count = 3;
 }
 
 message TokenPriceList {
@@ -52,15 +82,23 @@ message JupiterInstruction {
   bytes data = 4;
   uint64 slot = 5;
   uint64 block_time = 6;
+  // Parsed swap data
+  uint64 amount_in = 7;
+  uint64 amount_out = 8;
+  string input_mint = 9;
+  string output_mint = 10;
 }
 
 message JupiterInstructions {
   repeated JupiterInstruction instructions = 1;
+  uint64 total_volume = 2;
+  uint32 instruction_count = 3;
 }
 
 message ProgramStat {
   string program_id = 1;
   uint64 instruction_count = 2;
+  uint64 total_volume = 3;
 }
 
 message JupiterAnalytics {
@@ -68,5 +106,6 @@ message JupiterAnalytics {
   uint64 unique_accounts = 2;
   uint64 unique_mints = 3;
   repeated ProgramStat top_programs = 4;
+  uint64 total_volume = 5;
+  uint64 total_swaps = 6;
 }
-

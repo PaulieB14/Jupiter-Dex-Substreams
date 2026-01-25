@@ -1,9 +1,12 @@
 specVersion: v0.1.0
 package:
   name: jupiter-dex-substreams
-  version: v0.3.2
+  version: v0.3.3
   url: https://github.com/PaulieB14/Jupiter-Dex-Substreams
   image: assets/icon.png
+
+imports:
+  sol: https://spkg.io/streamingfast/solana-common-v0.3.1.spkg
 
 binaries:
   default:
@@ -20,21 +23,33 @@ protobuf:
 
 network: solana
 
+params:
+  sol:transactions_by_programid_without_votes: "program:JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 || program:JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB || program:JUP3c2Uh3WA4Ng34tw6kPd2G4C5BB21Xo36Je1s32Ph || program:JUP2jxvXaqu7NQY1GmNF4m1vodw12LVXYxbFL2uJvfo || program:jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu || program:DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M"
+
 modules:
   # SPL Token account initialization tracking
-  # Essential for resolving token account ownership
+  # Uses foundational module for 75% data reduction
   - name: map_spl_initialized_account
     kind: map
     initialBlock: 31310775
+    blockFilter:
+      module: sol:program_ids_without_votes
+      query:
+        string: "program:JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 || program:JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB || program:JUP3c2Uh3WA4Ng34tw6kPd2G4C5BB21Xo36Je1s32Ph || program:JUP2jxvXaqu7NQY1GmNF4m1vodw12LVXYxbFL2uJvfo || program:jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu || program:DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M"
     inputs:
       - source: sf.solana.type.v1.Block
     output:
       type: proto:sf.jupiter.v1.AccountOwnerRecords
 
-  # Core trading data extraction from Jupiter transactions
+  # Core trading data extraction with swap amount parsing
+  # Uses foundational module for 75% data reduction
   - name: map_jupiter_trading_data
     kind: map
     initialBlock: 31310775
+    blockFilter:
+      module: sol:program_ids_without_votes
+      query:
+        string: "program:JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 || program:JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB || program:JUP3c2Uh3WA4Ng34tw6kPd2G4C5BB21Xo36Je1s32Ph || program:JUP2jxvXaqu7NQY1GmNF4m1vodw12LVXYxbFL2uJvfo || program:jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu || program:DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M"
     inputs:
       - source: sf.solana.type.v1.Block
     output:
@@ -49,10 +64,14 @@ modules:
     output:
       type: proto:sf.jupiter.v1.TokenPriceList
 
-  # Enriched Jupiter instructions with account ownership and pricing
+  # Enriched Jupiter instructions with account ownership, pricing, and parsed amounts
   - name: map_jupiter_instructions
     kind: map
     initialBlock: 31310775
+    blockFilter:
+      module: sol:program_ids_without_votes
+      query:
+        string: "program:JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 || program:JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB || program:JUP3c2Uh3WA4Ng34tw6kPd2G4C5BB21Xo36Je1s32Ph || program:JUP2jxvXaqu7NQY1GmNF4m1vodw12LVXYxbFL2uJvfo || program:jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu || program:DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M"
     inputs:
       - source: sf.solana.type.v1.Block
       - map: map_spl_initialized_account
@@ -61,7 +80,7 @@ modules:
     output:
       type: proto:sf.jupiter.v1.JupiterInstructions
 
-  # High-level analytics and aggregations
+  # High-level analytics with volume tracking
   - name: map_jupiter_analytics
     kind: map
     initialBlock: 31310775

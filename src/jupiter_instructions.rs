@@ -17,9 +17,12 @@ pub fn map_jupiter_instructions(
 ) -> Result<JupiterInstructions, Error> {
     let owner_index = build_owner_index(owner_records);
     let price_index = build_price_index(token_prices);
-    let trades_by_tx = group_trades_by_tx(trading_data);
+    let trades_by_tx = group_trades_by_tx(&trading_data);
 
     let mut instructions = Vec::new();
+    let mut total_volume: u64 = 0;
+    let mut instruction_count: u32 = 0;
+
     let block_time = block
         .block_time
         .as_ref()
@@ -43,13 +46,28 @@ pub fn map_jupiter_instructions(
                 .collect::<Vec<_>>();
 
             let mut data = instruction.data().clone();
-            if data.is_empty() {
-                if let Some(trades) = trade_data {
-                    if let Some(first_trade) = trades.first() {
+            let mut amount_in: u64 = 0;
+            let mut amount_out: u64 = 0;
+            let mut input_mint = String::new();
+            let mut output_mint = String::new();
+
+            // Get parsed swap data from trading_data
+            if let Some(trades) = trade_data {
+                if let Some(first_trade) = trades.first() {
+                    if data.is_empty() {
                         data = first_trade.data.clone();
                     }
+                    amount_in = first_trade.amount_in;
+                    amount_out = first_trade.amount_out;
+                    input_mint = first_trade.input_mint.clone();
+                    output_mint = first_trade.output_mint.clone();
                 }
             }
+
+            if amount_in > 0 {
+                total_volume = total_volume.saturating_add(amount_in);
+            }
+            instruction_count += 1;
 
             instructions.push(JupiterInstruction {
                 program_id,
@@ -58,11 +76,19 @@ pub fn map_jupiter_instructions(
                 data,
                 slot: block.slot,
                 block_time,
+                amount_in,
+                amount_out,
+                input_mint,
+                output_mint,
             });
         }
     }
 
-    Ok(JupiterInstructions { instructions })
+    Ok(JupiterInstructions {
+        instructions,
+        total_volume,
+        instruction_count,
+    })
 }
 
 fn build_owner_index(records: AccountOwnerRecords) -> HashMap<String, (String, String)> {
@@ -86,9 +112,9 @@ fn build_price_index(token_prices: TokenPriceList) -> HashSet<String> {
         .collect()
 }
 
-fn group_trades_by_tx(trading_data: TradingDataList) -> HashMap<String, Vec<crate::pb::sf::jupiter::v1::TradingData>> {
+fn group_trades_by_tx(trading_data: &TradingDataList) -> HashMap<String, Vec<&crate::pb::sf::jupiter::v1::TradingData>> {
     let mut map: HashMap<String, Vec<_>> = HashMap::new();
-    for trade in trading_data.items {
+    for trade in &trading_data.items {
         map.entry(trade.transaction_id.clone())
             .or_default()
             .push(trade);
@@ -125,4 +151,3 @@ fn enrich_account(
 fn is_jupiter_program(program_id: &str) -> bool {
     JUPITER_PROGRAM_IDS.iter().any(|entry| entry == &program_id)
 }
-
