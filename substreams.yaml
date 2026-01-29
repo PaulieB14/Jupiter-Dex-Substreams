@@ -1,12 +1,15 @@
 specVersion: v0.1.0
 package:
   name: jupiter-dex-substreams
-  version: v0.3.3
+  version: v0.4.0
   url: https://github.com/PaulieB14/Jupiter-Dex-Substreams
   image: assets/icon.png
+  description: "High-performance Substreams for Jupiter DEX on Solana with SQL sink support (PostgreSQL/ClickHouse), 75% data reduction, and comprehensive swap parsing for Jupiter v1-v6, Limit Orders, and DCA."
 
 imports:
   sol: https://spkg.io/streamingfast/solana-common-v0.3.1.spkg
+  database: https://github.com/streamingfast/substreams-sink-database-changes/releases/download/v3.0.0/substreams-sink-database-changes-v3.0.0.spkg
+  sql: https://github.com/streamingfast/substreams-sink-sql/releases/download/protodefs-v1.0.7/substreams-sink-sql-protodefs-v1.0.7.spkg
 
 binaries:
   default:
@@ -20,6 +23,9 @@ protobuf:
   importPaths:
     - jupiter
     - proto
+  excludePaths:
+    - sf/substreams
+    - google
 
 network: solana
 
@@ -106,3 +112,23 @@ modules:
     valueType: string
     inputs:
       - map: map_jupiter_trading_data
+
+  # Database sink output (PostgreSQL/ClickHouse)
+  # Transforms trading data and analytics into CDC records
+  - name: db_out
+    kind: map
+    initialBlock: 31310775
+    inputs:
+      - map: map_jupiter_trading_data
+      - map: map_jupiter_analytics
+    output:
+      type: proto:sf.substreams.sink.database.v1.DatabaseChanges
+
+# SQL Sink Configuration
+# Usage: substreams-sink-sql run "psql://..." jupiter-dex-substreams-v0.4.0.spkg
+sink:
+  module: db_out
+  type: sf.substreams.sink.sql.v1.Service
+  config:
+    schema: ./schema.sql
+    engine: postgres

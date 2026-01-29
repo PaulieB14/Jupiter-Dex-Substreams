@@ -1,8 +1,8 @@
 [package]
 name = "jupiter-dex-substreams"
-version = "0.3.3"
+version = "0.4.0"
 edition = "2021"
-description = "High-performance Substreams for Jupiter DEX with 75% data reduction via foundational stores"
+description = "High-performance Substreams for Jupiter DEX with SQL sink support and 75% data reduction via foundational stores"
 license = "MIT"
 repository = "https://github.com/PaulieB14/Jupiter-Dex-Substreams"
 keywords = ["solana", "jupiter", "dex", "substreams", "blockchain"]
@@ -15,6 +15,9 @@ crate-type = ["cdylib"]
 # Substreams core dependencies
 substreams = "0.7"
 substreams-solana = "0.14.2"
+
+# Database sink support
+substreams-database-change = "4"
 
 # Protobuf serialization
 prost = "0.13"
