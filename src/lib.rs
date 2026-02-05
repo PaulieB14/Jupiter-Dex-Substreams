@@ -6,6 +6,7 @@ pub mod token_price_store;
 pub mod jupiter_instructions;
 pub mod jupiter_analytics;
 pub mod db_out;
+pub mod stores;
 
 pub use spl_account_store::map_spl_initialized_account;
 pub use jupiter_trading_store::map_jupiter_trading_data;
@@ -13,3 +14,4 @@ pub use token_price_store::map_token_prices;
 pub use jupiter_instructions::map_jupiter_instructions;
 pub use jupiter_analytics::map_jupiter_analytics;
 pub use db_out::db_out;
+pub use stores::{store_swap_volumes, store_unique_traders, store_token_stats};

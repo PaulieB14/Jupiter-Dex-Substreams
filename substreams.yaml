@@ -1,10 +1,10 @@
 specVersion: v0.1.0
 package:
   name: jupiter-dex-substreams
-  version: v0.4.0
+  version: v0.5.0
   url: https://github.com/PaulieB14/Jupiter-Dex-Substreams
   image: assets/icon.png
-  description: "High-performance Substreams for Jupiter DEX on Solana with SQL sink support (PostgreSQL/ClickHouse), 75% data reduction, and comprehensive swap parsing for Jupiter v1-v6, Limit Orders, and DCA."
+  description: "High-performance Substreams for Jupiter DEX on Solana with OHLCV candles, SQL sink support (PostgreSQL/ClickHouse), delta updates, and comprehensive swap parsing for Jupiter v2-v6, Limit Orders, and DCA."
 
 imports:
   sol: https://spkg.io/streamingfast/solana-common-v0.3.1.spkg
@@ -33,8 +33,12 @@ params:
   sol:transactions_by_programid_without_votes: "program:JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 || program:JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB || program:JUP3c2Uh3WA4Ng34tw6kPd2G4C5BB21Xo36Je1s32Ph || program:JUP2jxvXaqu7NQY1GmNF4m1vodw12LVXYxbFL2uJvfo || program:jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu || program:DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M"
 
 modules:
+  #############################################################################
+  # FOUNDATIONAL MODULES
+  #############################################################################
+
   # SPL Token account initialization tracking
-  # Uses foundational module for 75% data reduction
+  # Tracks account ownership for enrichment
   - name: map_spl_initialized_account
     kind: map
     initialBlock: 31310775
@@ -47,8 +51,12 @@ modules:
     output:
       type: proto:sf.jupiter.v1.AccountOwnerRecords
 
+  #############################################################################
+  # CORE DATA EXTRACTION
+  #############################################################################
+
   # Core trading data extraction with swap amount parsing
-  # Uses foundational module for 75% data reduction
+  # Parses instruction data to extract swap amounts, mints, and wallets
   - name: map_jupiter_trading_data
     kind: map
     initialBlock: 31310775
@@ -70,6 +78,10 @@ modules:
     output:
       type: proto:sf.jupiter.v1.TokenPriceList
 
+  #############################################################################
+  # ENRICHED DATA
+  #############################################################################
+
   # Enriched Jupiter instructions with account ownership, pricing, and parsed amounts
   - name: map_jupiter_instructions
     kind: map
@@ -86,7 +98,11 @@ modules:
     output:
       type: proto:sf.jupiter.v1.JupiterInstructions
 
-  # High-level analytics with volume tracking
+  #############################################################################
+  # ANALYTICS
+  #############################################################################
+
+  # High-level analytics with volume tracking and program stats
   - name: map_jupiter_analytics
     kind: map
     initialBlock: 31310775
@@ -95,7 +111,17 @@ modules:
     output:
       type: proto:sf.jupiter.v1.JupiterAnalytics
 
-  # Store: Track swap volumes by token pair
+  #############################################################################
+  # PERSISTENT STORES
+  #############################################################################
+
+  # Store: Track cumulative swap volumes by token pair, token, and daily
+  # Key patterns:
+  #   - pair:{input}:{output} -> cumulative volume
+  #   - token:volume_in:{mint} -> input volume
+  #   - token:volume_out:{mint} -> output volume
+  #   - daily:{date}:volume -> daily volume
+  #   - program:{id}:volume -> per-program volume
   - name: store_swap_volumes
     kind: store
     initialBlock: 31310775
@@ -104,7 +130,11 @@ modules:
     inputs:
       - map: map_jupiter_trading_data
 
-  # Store: Track unique traders (wallets)
+  # Store: Track unique traders (wallets) with first-seen timestamp
+  # Key patterns:
+  #   - trader:{wallet} -> first_slot:first_time
+  #   - daily:{date}:trader:{wallet} -> first_slot (for daily uniques)
+  #   - token:{mint}:trader:{wallet} -> first_slot (per-token traders)
   - name: store_unique_traders
     kind: store
     initialBlock: 31310775
@@ -113,8 +143,29 @@ modules:
     inputs:
       - map: map_jupiter_trading_data
 
+  # Store: Track token statistics (trade counts per token)
+  - name: store_token_stats
+    kind: store
+    initialBlock: 31310775
+    updatePolicy: add
+    valueType: bigint
+    inputs:
+      - map: map_jupiter_trading_data
+
+  #############################################################################
+  # DATABASE SINK OUTPUT
+  #############################################################################
+
   # Database sink output (PostgreSQL/ClickHouse)
-  # Transforms trading data and analytics into CDC records
+  # Produces CDC records with delta operations:
+  #   - Individual swaps (create_row)
+  #   - OHLCV candles (upsert with set_if_null, set, max, min, add)
+  #   - Token pair stats (upsert with add)
+  #   - Token stats (upsert with add)
+  #   - Trader stats (upsert with add)
+  #   - Daily/hourly stats (upsert with add)
+  #   - Program stats (upsert with add)
+  #   - Protocol metrics (upsert with add, max)
   - name: db_out
     kind: map
     initialBlock: 31310775
@@ -124,8 +175,20 @@ modules:
     output:
       type: proto:sf.substreams.sink.database.v1.DatabaseChanges
 
+#############################################################################
+# SINK CONFIGURATION
+#############################################################################
+
 # SQL Sink Configuration
-# Usage: substreams-sink-sql run "psql://..." jupiter-dex-substreams-v0.4.0.spkg
+# Supports both PostgreSQL and ClickHouse
+#
+# PostgreSQL:
+#   substreams-sink-sql setup "psql://user:pass@host:5432/db" jupiter-dex-substreams-v0.5.0.spkg
+#   substreams-sink-sql run "psql://user:pass@host:5432/db" jupiter-dex-substreams-v0.5.0.spkg
+#
+# ClickHouse:
+#   substreams-sink-sql setup "clickhouse://user:pass@host:9000/db" jupiter-dex-substreams-v0.5.0.spkg --engine=clickhouse
+#   substreams-sink-sql run "clickhouse://user:pass@host:9000/db" jupiter-dex-substreams-v0.5.0.spkg --engine=clickhouse
 sink:
   module: db_out
   type: sf.substreams.sink.sql.v1.Service

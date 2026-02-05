@@ -1,8 +1,8 @@
 [package]
 name = "jupiter-dex-substreams"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
-description = "High-performance Substreams for Jupiter DEX with SQL sink support and 75% data reduction via foundational stores"
+description = "High-performance Substreams for Jupiter DEX with OHLCV candles, SQL sink support (PostgreSQL/ClickHouse), and delta updates"
 license = "MIT"
 repository = "https://github.com/PaulieB14/Jupiter-Dex-Substreams"
 keywords = ["solana", "jupiter", "dex", "substreams", "blockchain"]

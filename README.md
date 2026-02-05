@@ -1,36 +1,43 @@
 # Jupiter DEX Substreams
 
-[![Substreams](https://img.shields.io/badge/Substreams-v0.4.0-blue)](https://substreams.dev/packages/jupiter-dex-substreams/v0.4.0)
+[![Substreams](https://img.shields.io/badge/Substreams-v0.5.0-blue)](https://substreams.dev)
 [![Solana](https://img.shields.io/badge/Network-Solana-purple)](https://solana.com)
 [![Jupiter](https://img.shields.io/badge/DEX-Jupiter-orange)](https://jup.ag)
-[![SQL Sink](https://img.shields.io/badge/SQL%20Sink-PostgreSQL%20%7C%20ClickHouse-green)](https://docs.substreams.dev)
+[![SQL Sink](https://img.shields.io/badge/Sink-PostgreSQL%20%7C%20ClickHouse-green)](https://docs.substreams.dev)
 
-High-performance Substreams for tracking Jupiter DEX aggregator events on Solana with **SQL sink support** and **75% data reduction** via foundational stores.
+High-performance Substreams for tracking Jupiter DEX aggregator on Solana with **OHLCV candles**, **SQL sink support**, **delta updates**, and comprehensive swap analytics.
 
 ## Features
 
-- **SQL Database Sink** - Stream swap data directly to PostgreSQL or ClickHouse
-- **75% Data Reduction** - Uses foundational modules to filter vote transactions
-- **Multi-Version Support** - Tracks Jupiter v1-v6, Limit Orders, and DCA
-- **Comprehensive Analytics** - Volume tracking, unique traders, program stats
-- **Production Ready** - Optimized Rust code with unit tests
+| Feature | Description |
+|---------|-------------|
+| **OHLCV Candles** | Real-time candlestick data at 5min, 1hr, 4hr, and daily intervals |
+| **SQL Database Sink** | Stream directly to PostgreSQL or ClickHouse |
+| **Delta Updates** | Efficient aggregations using `set_if_null`, `max`, `min`, `add` operations |
+| **Multi-Version Support** | Jupiter v2-v6, Limit Orders, and DCA programs |
+| **Persistent Stores** | Track volumes, unique traders, and token stats across blocks |
+| **Production Ready** | Optimized Rust with unit tests and comprehensive error handling |
 
 ## Quick Start
 
-### Run with Substreams CLI
+### Install & Authenticate
 
 ```bash
 # Install Substreams CLI
 curl -sSL https://substreams.dev/install.sh | bash
 
-# Authenticate
+# Authenticate with StreamingFast
 substreams auth
+```
 
-# Run Jupiter analytics
-substreams run https://github.com/PaulieB14/Jupiter-Dex-Substreams/releases/download/v0.4.0/jupiter-dex-substreams-v0.4.0.spkg \
+### Run Analytics
+
+```bash
+# Stream Jupiter analytics
+substreams run jupiter-dex-substreams-v0.5.0.spkg \
   map_jupiter_analytics \
   -e mainnet.sol.streamingfast.io:443 \
-  -s 325766951 -t +10
+  -s 325766951 -t +100
 ```
 
 ### Stream to PostgreSQL
@@ -47,12 +54,12 @@ docker run -d --name postgres \
 # 2. Setup schema
 substreams-sink-sql setup \
   "psql://postgres:password@localhost:5432/jupiter?sslmode=disable" \
-  jupiter-dex-substreams-v0.4.0.spkg
+  jupiter-dex-substreams-v0.5.0.spkg
 
 # 3. Run sink
 substreams-sink-sql run \
   "psql://postgres:password@localhost:5432/jupiter?sslmode=disable" \
-  jupiter-dex-substreams-v0.4.0.spkg
+  jupiter-dex-substreams-v0.5.0.spkg
 ```
 
 ### Stream to ClickHouse
@@ -63,69 +70,214 @@ docker run -d --name clickhouse \
   -p 8123:8123 -p 9000:9000 \
   clickhouse/clickhouse-server:latest
 
-# 2. Setup schema (use clickhouse schema)
+# 2. Setup and run with ClickHouse engine
 substreams-sink-sql setup \
   "clickhouse://default:@localhost:9000/default" \
-  jupiter-dex-substreams-v0.4.0.spkg
+  jupiter-dex-substreams-v0.5.0.spkg \
+  --engine=clickhouse
 
-# 3. Run sink
 substreams-sink-sql run \
   "clickhouse://default:@localhost:9000/default" \
-  jupiter-dex-substreams-v0.4.0.spkg
+  jupiter-dex-substreams-v0.5.0.spkg \
+  --engine=clickhouse
 ```
 
-## Module Architecture
+## Architecture
 
 ```
 sf.solana.type.v1.Block
-├── map_spl_initialized_account → AccountOwnerRecords
-├── map_jupiter_trading_data → TradingDataList
-│   ├── map_token_prices → TokenPriceList
-│   ├── store_swap_volumes (bigint store)
-│   └── store_unique_traders (string store)
-├── map_jupiter_instructions → JupiterInstructions
-│   └── map_jupiter_analytics → JupiterAnalytics
-└── db_out → DatabaseChanges (SQL Sink)
+│
+├─► map_spl_initialized_account ──► AccountOwnerRecords
+│
+├─► map_jupiter_trading_data ──► TradingDataList
+│   │
+│   ├─► map_token_prices ──► TokenPriceList
+│   │
+│   ├─► store_swap_volumes (bigint, add)
+│   │   └─► pair:{in}:{out}, token:volume_in:{mint}, daily:{date}:volume
+│   │
+│   ├─► store_unique_traders (string, set_if_not_exists)
+│   │   └─► trader:{wallet}, daily:{date}:trader:{wallet}
+│   │
+│   └─► store_token_stats (bigint, add)
+│       └─► token:{mint}:trade_count
+│
+├─► map_jupiter_instructions ──► JupiterInstructions
+│   │
+│   └─► map_jupiter_analytics ──► JupiterAnalytics
+│
+└─► db_out ──► DatabaseChanges (SQL Sink)
+    │
+    ├─► jupiter_swaps (individual trades)
+    ├─► candles (OHLCV at 5m/1h/4h/1d)
+    ├─► token_pairs (pair statistics)
+    ├─► token_stats (per-token metrics)
+    ├─► trader_stats (wallet activity)
+    ├─► daily_stats / hourly_stats
+    ├─► program_stats (per-version)
+    └─► protocol_metrics (global totals)
 ```
-
-## Available Modules
-
-| Module | Output | Description |
-|--------|--------|-------------|
-| `map_jupiter_trading_data` | `TradingDataList` | Core swap data with parsed amounts |
-| `map_jupiter_analytics` | `JupiterAnalytics` | Aggregated stats, top programs |
-| `map_jupiter_instructions` | `JupiterInstructions` | Enriched instructions with ownership |
-| `map_token_prices` | `TokenPriceList` | Token price calculations |
-| `db_out` | `DatabaseChanges` | SQL sink output (PostgreSQL/ClickHouse) |
 
 ## Database Schema
 
-### PostgreSQL Tables
+### Core Tables
 
-| Table | Description |
-|-------|-------------|
-| `jupiter_swaps` | Individual swap events with amounts, mints, wallets |
-| `daily_swap_stats` | Daily aggregated swap counts and volumes |
-| `program_stats` | Per-program instruction counts and volumes |
-| `global_metrics` | Protocol-wide totals |
+| Table | Description | Delta Operations |
+|-------|-------------|------------------|
+| `jupiter_swaps` | Individual swap events | `create_row` |
+| `candles` | OHLCV candlestick data | `set_if_null(open)`, `set(close)`, `max(high)`, `min(low)`, `add(volume)` |
+| `token_pairs` | Trading pair statistics | `add(swap_count, volume)`, `set(last_swap)` |
+| `token_stats` | Per-token metrics | `add(swaps, volume)`, `set(last_seen)` |
+| `trader_stats` | Wallet activity | `add(swaps, volume)`, `set(last_swap)` |
+| `daily_stats` | Daily aggregations | `add(swap_count, volume)` |
+| `hourly_stats` | Hourly aggregations | `add(swap_count, volume)` |
+| `program_stats` | Per-program stats | `add(count, volume)` |
+| `protocol_metrics` | Global protocol metrics | `add(swaps, volume)`, `max(unique_*)` |
 
-### ClickHouse Tables
+### Candle Intervals
 
-Same structure as PostgreSQL, optimized with:
-- `MergeTree` engine with time-based partitioning
-- `SummingMergeTree` for aggregations
-- Materialized views for real-time analytics
+| Interval | Seconds | Use Case |
+|----------|---------|----------|
+| 5 minutes | 300 | High-frequency trading, scalping |
+| 1 hour | 3600 | Intraday analysis |
+| 4 hours | 14400 | Swing trading |
+| 1 day | 86400 | Long-term trends |
+
+### Views (PostgreSQL)
+
+```sql
+-- Get latest prices for all pairs
+SELECT * FROM latest_prices;
+
+-- Top tokens by volume
+SELECT * FROM top_tokens_24h;
+
+-- Top trading pairs
+SELECT * FROM top_pairs;
+
+-- Top traders by volume
+SELECT * FROM top_traders;
+
+-- Daily volume trend (30 days)
+SELECT * FROM daily_volume_trend;
+
+-- Hourly volume (24 hours)
+SELECT * FROM hourly_volume_24h;
+
+-- Program distribution
+SELECT * FROM program_distribution;
+
+-- 5-minute candles (24h)
+SELECT * FROM candles_5m_24h WHERE pair_id = 'SOL:USDC';
+
+-- Hourly candles (7 days)
+SELECT * FROM candles_1h_7d WHERE pair_id = 'SOL:USDC';
+
+-- Daily candles (30 days)
+SELECT * FROM candles_1d_30d WHERE pair_id = 'SOL:USDC';
+```
+
+### Views (ClickHouse)
+
+```sql
+-- Finalized hourly candles
+SELECT * FROM v_candles_1h WHERE pair_id = 'SOL:USDC' ORDER BY candle_time DESC;
+
+-- Finalized daily candles
+SELECT * FROM v_candles_1d WHERE pair_id = 'SOL:USDC' ORDER BY candle_time DESC;
+
+-- Top tokens
+SELECT * FROM v_top_tokens;
+
+-- User activity
+SELECT * FROM v_user_activity LIMIT 100;
+
+-- Daily unique users
+SELECT * FROM v_daily_unique_users;
+```
 
 ## Jupiter Programs Tracked
 
 | Program | Address | Type |
 |---------|---------|------|
-| Jupiter v6 | `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4` | Swap Aggregator |
+| Jupiter v6 | `JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4` | Swap Aggregator (Latest) |
 | Jupiter v4 | `JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB` | Swap Aggregator |
 | Jupiter v3 | `JUP3c2Uh3WA4Ng34tw6kPd2G4C5BB21Xo36Je1s32Ph` | Swap Aggregator |
 | Jupiter v2 | `JUP2jxvXaqu7NQY1GmNF4m1vodw12LVXYxbFL2uJvfo` | Swap Aggregator |
 | Limit Orders | `jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu` | Limit Orders |
 | DCA | `DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M` | Dollar Cost Averaging |
+
+## Example Queries
+
+### Get Candles for a Trading Pair
+
+```sql
+-- PostgreSQL: Use the helper function
+SELECT * FROM get_candles('SOL_MINT:USDC_MINT', 3600, 24);
+
+-- Or query directly
+SELECT
+    timestamp,
+    open,
+    high,
+    low,
+    close,
+    volume_in,
+    trade_count
+FROM candles
+WHERE pair_id = 'So11111111111111111111111111111111111111112:EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v'
+  AND interval_seconds = 3600
+ORDER BY timestamp DESC
+LIMIT 24;
+```
+
+### Top Tokens by Volume
+
+```sql
+-- PostgreSQL
+SELECT
+    mint_address,
+    total_swaps_as_input + total_swaps_as_output AS total_swaps,
+    total_volume_as_input + total_volume_as_output AS total_volume
+FROM token_stats
+ORDER BY total_volume DESC
+LIMIT 20;
+
+-- ClickHouse
+SELECT * FROM v_top_tokens;
+```
+
+### Whale Activity (Large Trades)
+
+```sql
+SELECT
+    tx_hash,
+    user_wallet,
+    input_mint,
+    output_mint,
+    amount_in,
+    amount_out,
+    TO_TIMESTAMP(block_time) as swap_time
+FROM jupiter_swaps
+WHERE amount_in > 1000000000000  -- > 1M tokens (adjust for decimals)
+ORDER BY block_time DESC
+LIMIT 100;
+```
+
+### Trading Pair Analysis
+
+```sql
+SELECT
+    input_mint,
+    output_mint,
+    swap_count,
+    total_volume_in,
+    total_volume_out,
+    TO_TIMESTAMP(last_swap_time) as last_trade
+FROM token_pairs
+ORDER BY swap_count DESC
+LIMIT 50;
+```
 
 ## Development
 
@@ -142,7 +294,7 @@ Same structure as PostgreSQL, optimized with:
 git clone https://github.com/PaulieB14/Jupiter-Dex-Substreams.git
 cd Jupiter-Dex-Substreams
 
-# Build
+# Build WASM
 substreams build
 
 # Run tests
@@ -151,7 +303,7 @@ cargo test
 # Run with GUI
 substreams gui substreams.yaml map_jupiter_analytics \
   -e mainnet.sol.streamingfast.io:443 \
-  -s 325766951 -t +10
+  -s 325766951 -t +100
 ```
 
 ### Project Structure
@@ -160,107 +312,67 @@ substreams gui substreams.yaml map_jupiter_analytics \
 Jupiter-Dex-Substreams/
 ├── src/
 │   ├── lib.rs                    # Module exports
-│   ├── constants.rs              # Program IDs and configuration
-│   ├── jupiter_trading_store.rs  # Core swap parsing (with tests)
+│   ├── constants.rs              # Program IDs
+│   ├── jupiter_trading_store.rs  # Core swap parsing
 │   ├── jupiter_instructions.rs   # Instruction enrichment
-│   ├── jupiter_analytics.rs      # Analytics aggregation (with tests)
-│   ├── token_price_store.rs      # Price calculations
-│   ├── spl_account_store.rs      # SPL account tracking
-│   ├── db_out.rs                 # SQL sink output (with tests)
-│   └── pb/                       # Generated protobuf code
+│   ├── jupiter_analytics.rs      # Analytics aggregation
+│   ├── token_price_store.rs      # Price tracking
+│   ├── spl_account_store.rs      # Account ownership
+│   ├── stores.rs                 # Persistent stores
+│   ├── db_out.rs                 # SQL sink with candles
+│   └── pb/                       # Generated protobuf
 ├── proto/
-│   └── sf/jupiter/v1/types.proto # Data type definitions
+│   └── sf/jupiter/v1/types.proto # Data types
 ├── schema.sql                    # PostgreSQL schema
 ├── schema.clickhouse.sql         # ClickHouse schema
-├── substreams.yaml               # Manifest with sink config
-└── Cargo.toml                    # Rust dependencies
+├── substreams.yaml               # Manifest
+└── Cargo.toml                    # Dependencies
 ```
 
-## What's New in v0.4.0
+## What's New in v0.5.0
 
-### SQL Sink Support
-- New `db_out` module for streaming to PostgreSQL/ClickHouse
-- Pre-built schemas with indexes and materialized views
-- Delta operations for efficient aggregations
+### OHLCV Candles
+- Real-time candlestick data for all trading pairs
+- Multiple intervals: 5min, 1hr, 4hr, 1day
+- Delta updates: `set_if_null(open)`, `set(close)`, `max(high)`, `min(low)`, `add(volume)`
 
-### Performance Improvements
-- Eliminated unnecessary string clones in hot paths
-- Pre-allocated collections with estimated capacities
-- Optimized instruction parsing with validation
+### Enhanced Tables
+- `candles` - OHLCV data with composite primary key
+- `token_pairs` - Trading pair statistics
+- `token_stats` - Per-token metrics
+- `trader_stats` - Wallet activity tracking
+- `hourly_stats` - Hourly aggregations
 
-### Code Quality
-- Comprehensive unit tests for parsing and analytics
-- Improved constants module with helper functions
-- Better error handling with structured defaults
+### Persistent Stores
+- `store_swap_volumes` - Cumulative volumes by pair, token, date
+- `store_unique_traders` - First-seen tracking for wallets
+- `store_token_stats` - Trade counts per token
 
-### Documentation
-- Updated README with SQL sink instructions
-- Added database schema documentation
-- Improved inline code documentation
-
-## Example Queries
-
-### PostgreSQL
-
-```sql
--- Top tokens by volume (last 24 hours)
-SELECT input_mint, COUNT(*) as swaps, SUM(amount_in) as volume
-FROM jupiter_swaps
-WHERE block_time > EXTRACT(EPOCH FROM NOW() - INTERVAL '24 hours')
-GROUP BY input_mint
-ORDER BY volume DESC
-LIMIT 10;
-
--- Daily swap volume
-SELECT date, swap_count, total_volume
-FROM daily_swap_stats
-ORDER BY date DESC
-LIMIT 30;
-```
-
-### ClickHouse
-
-```sql
--- Hourly volume with materialized view
-SELECT hour, sum(swap_count), sum(volume_in)
-FROM hourly_swap_volume
-WHERE hour > now() - INTERVAL 24 HOUR
-GROUP BY hour
-ORDER BY hour;
-
--- Top trading pairs
-SELECT input_mint, output_mint, swap_count, total_volume_in
-FROM token_pair_volumes
-ORDER BY swap_count DESC
-LIMIT 20;
-```
+### ClickHouse Optimizations
+- Materialized views for real-time candle aggregation
+- `AggregatingMergeTree` for efficient state management
+- Pre-computed views for common queries
 
 ## Resources
 
 - [Substreams Documentation](https://docs.substreams.dev/)
 - [SQL Sink Guide](https://docs.substreams.dev/documentation/consume/sql)
+- [Delta Updates Demo](https://github.com/streamingfast/substreams-eth-uni-v4-demo-candles)
 - [Jupiter Developer Docs](https://docs.jup.ag/)
 - [Solana Documentation](https://docs.solana.com/)
 
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+2. Create a feature branch (`git checkout -b feature/awesome`)
 3. Run tests (`cargo test`)
-4. Commit changes (`git commit -m 'Add amazing feature'`)
-5. Push to branch (`git push origin feature/amazing-feature`)
+4. Commit changes (`git commit -m 'Add awesome feature'`)
+5. Push to branch (`git push origin feature/awesome`)
 6. Open a Pull Request
 
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
-
-## Links
-
-- **Package**: https://substreams.dev/packages/jupiter-dex-substreams/v0.4.0
-- **Repository**: https://github.com/PaulieB14/Jupiter-Dex-Substreams
-- **Jupiter**: https://jup.ag
-- **Solana**: https://solana.com
 
 ---
 
