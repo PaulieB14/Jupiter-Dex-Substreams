@@ -1,6 +1,6 @@
 [package]
 name = "jupiter-dex-substreams"
-version = "0.5.0"
+version = "0.5.1"
 edition = "2021"
 description = "High-performance Substreams for Jupiter DEX with OHLCV candles, SQL sink support (PostgreSQL/ClickHouse), and delta updates"
 license = "MIT"

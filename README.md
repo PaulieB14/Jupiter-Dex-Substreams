@@ -1,6 +1,6 @@
 # Jupiter DEX Substreams
 
-[![Substreams](https://img.shields.io/badge/Substreams-v0.5.0-blue)](https://substreams.dev)
+[![Substreams](https://img.shields.io/badge/Substreams-v0.5.1-blue)](https://substreams.dev)
 [![Solana](https://img.shields.io/badge/Network-Solana-purple)](https://solana.com)
 [![Jupiter](https://img.shields.io/badge/DEX-Jupiter-orange)](https://jup.ag)
 [![SQL Sink](https://img.shields.io/badge/Sink-PostgreSQL%20%7C%20ClickHouse-green)](https://docs.substreams.dev)
@@ -34,7 +34,7 @@ substreams auth
 
 ```bash
 # Stream Jupiter analytics
-substreams run jupiter-dex-substreams-v0.5.0.spkg \
+substreams run jupiter-dex-substreams-v0.5.1.spkg \
   map_jupiter_analytics \
   -e mainnet.sol.streamingfast.io:443 \
   -s 325766951 -t +100
@@ -54,12 +54,12 @@ docker run -d --name postgres \
 # 2. Setup schema
 substreams-sink-sql setup \
   "psql://postgres:password@localhost:5432/jupiter?sslmode=disable" \
-  jupiter-dex-substreams-v0.5.0.spkg
+  jupiter-dex-substreams-v0.5.1.spkg
 
 # 3. Run sink
 substreams-sink-sql run \
   "psql://postgres:password@localhost:5432/jupiter?sslmode=disable" \
-  jupiter-dex-substreams-v0.5.0.spkg
+  jupiter-dex-substreams-v0.5.1.spkg
 ```
 
 ### Stream to ClickHouse
@@ -73,12 +73,12 @@ docker run -d --name clickhouse \
 # 2. Setup and run with ClickHouse engine
 substreams-sink-sql setup \
   "clickhouse://default:@localhost:9000/default" \
-  jupiter-dex-substreams-v0.5.0.spkg \
+  jupiter-dex-substreams-v0.5.1.spkg \
   --engine=clickhouse
 
 substreams-sink-sql run \
   "clickhouse://default:@localhost:9000/default" \
-  jupiter-dex-substreams-v0.5.0.spkg \
+  jupiter-dex-substreams-v0.5.1.spkg \
   --engine=clickhouse
 ```
 
@@ -328,6 +328,13 @@ Jupiter-Dex-Substreams/
 ├── substreams.yaml               # Manifest
 └── Cargo.toml                    # Dependencies
 ```
+
+## What's New in v0.5.1
+
+### V4 Protocol Support
+- Updated to `substreams-sink-database-changes` v4.0.0 spkg
+- Pinned Rust toolchain to 1.85.0 for compatibility
+- Automatic V4 Blocks Streams + S2 compression negotiation
 
 ## What's New in v0.5.0
 

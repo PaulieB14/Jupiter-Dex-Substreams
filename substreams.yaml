@@ -1,14 +1,14 @@
 specVersion: v0.1.0
 package:
   name: jupiter-dex-substreams
-  version: v0.5.0
+  version: v0.5.1
   url: https://github.com/PaulieB14/Jupiter-Dex-Substreams
   image: assets/icon.png
   description: "High-performance Substreams for Jupiter DEX on Solana with OHLCV candles, SQL sink support (PostgreSQL/ClickHouse), delta updates, and comprehensive swap parsing for Jupiter v2-v6, Limit Orders, and DCA."
 
 imports:
   sol: https://spkg.io/streamingfast/solana-common-v0.3.1.spkg
-  database: https://github.com/streamingfast/substreams-sink-database-changes/releases/download/v3.0.0/substreams-sink-database-changes-v3.0.0.spkg
+  database: https://github.com/streamingfast/substreams-sink-database-changes/releases/download/v4.0.0/substreams-sink-database-changes-v4.0.0.spkg
   sql: https://github.com/streamingfast/substreams-sink-sql/releases/download/protodefs-v1.0.7/substreams-sink-sql-protodefs-v1.0.7.spkg
 
 binaries:
