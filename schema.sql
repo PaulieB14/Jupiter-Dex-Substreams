@@ -344,11 +344,11 @@ CREATE OR REPLACE FUNCTION get_candles(
     p_limit INT DEFAULT 100
 )
 RETURNS TABLE (
-    timestamp BIGINT,
-    open BIGINT,
-    high BIGINT,
-    low BIGINT,
-    close BIGINT,
+    "timestamp" BIGINT,
+    "open" BIGINT,
+    "high" BIGINT,
+    "low" BIGINT,
+    "close" BIGINT,
     volume_in NUMERIC,
     volume_out NUMERIC,
     trade_count BIGINT

@@ -124,9 +124,8 @@ fn parse_jupiter_instruction(data: &[u8], accounts: &[String]) -> ParsedSwap {
 /// Parse Route instruction (Jupiter v6)
 /// Format: discriminator(8) + route_plan + in_amount(8) + quoted_out_amount(8) + slippage_bps(2) + platform_fee_bps(1)
 fn parse_route_instruction(data: &[u8], accounts: &[String]) -> ParsedSwap {
-    // Route instruction has variable length route_plan first
-    // We need to find the amounts at the end
-    if data.len() < 24 {
+    // Route instructions require at least 9 accounts (same layout as SharedAccountsRoute)
+    if accounts.len() < 9 || data.len() < 24 {
         return ParsedSwap::default();
     }
 
@@ -156,10 +155,10 @@ fn parse_route_instruction(data: &[u8], accounts: &[String]) -> ParsedSwap {
 /// Parse SharedAccountsRoute instruction (Jupiter v6)
 /// Most common instruction type
 fn parse_shared_accounts_route(data: &[u8], accounts: &[String]) -> ParsedSwap {
-    // SharedAccountsRoute format:
-    // discriminator(8) + id(1) + route_plan + in_amount(8) + quoted_out_amount(8) + slippage_bps(2) + platform_fee_bps(1)
-
-    if data.len() < 30 {
+    // SharedAccountsRoute requires at least 9 accounts:
+    // [0] token_program, [1] program_authority, [2] user_transfer_authority,
+    // [3-6] token accounts, [7] source_mint, [8] destination_mint
+    if accounts.len() < 9 || data.len() < 30 {
         return ParsedSwap::default();
     }
 
@@ -205,7 +204,7 @@ fn parse_shared_accounts_route(data: &[u8], accounts: &[String]) -> ParsedSwap {
 
 /// Parse ExactOutRoute instruction
 fn parse_exact_out_route(data: &[u8], accounts: &[String]) -> ParsedSwap {
-    if data.len() < 24 {
+    if accounts.len() < 9 || data.len() < 24 {
         return ParsedSwap::default();
     }
 
@@ -238,7 +237,9 @@ fn parse_shared_accounts_exact_out(data: &[u8], accounts: &[String]) -> ParsedSw
 /// Generic swap parsing for unknown instruction formats
 /// Uses heuristics to find likely swap amounts in instruction data
 fn parse_generic_swap(data: &[u8], accounts: &[String]) -> ParsedSwap {
-    if data.len() < 16 {
+    // Require at least 9 accounts to ensure this is a real swap instruction
+    // with proper mint addresses, not an inner instruction or event
+    if accounts.len() < 9 || data.len() < 16 {
         return ParsedSwap::default();
     }
 
@@ -272,29 +273,36 @@ fn is_valid_amount(amount: u64) -> bool {
 }
 
 /// Extract mint addresses and user wallet from accounts
+///
+/// Jupiter v6 SharedAccountsRoute layout:
+/// [0] token_program
+/// [1] program_authority
+/// [2] user_transfer_authority (user wallet / signer)
+/// [3] source_token_account (user's source ATA)
+/// [4] program_source_token_account
+/// [5] program_destination_token_account
+/// [6] destination_token_account (user's destination ATA)
+/// [7] source_mint (input mint)
+/// [8] destination_mint (output mint)
+/// [9+] optional: platform_fee_account, token2022, event_authority
 fn extract_mints_from_accounts(accounts: &[String]) -> (String, String, String) {
-    // Jupiter account layout varies by instruction, but typically:
-    // - Token program is always present
-    // - User's wallet is usually first or second
-    // - Source/destination token accounts contain the mints
-
-    let user_wallet = accounts.first().cloned().unwrap_or_default();
-
-    // For SharedAccountsRoute, typical layout:
-    // [0] token_program, [1] user_transfer_authority, [2] user_source_token_account,
-    // [3] user_destination_token_account, [4] destination_token_account (can be same as 3)
-    // [5] destination_mint, [6] platform_fee_account (optional), [7+] intermediate accounts
-
-    let input_mint = if accounts.len() > 2 {
+    // User wallet is at [2] (user_transfer_authority / signer)
+    let user_wallet = if accounts.len() > 2 {
         accounts[2].clone()
+    } else {
+        accounts.first().cloned().unwrap_or_default()
+    };
+
+    // Source mint (input) is at [7]
+    let input_mint = if accounts.len() > 7 {
+        accounts[7].clone()
     } else {
         String::new()
     };
 
-    let output_mint = if accounts.len() > 5 {
-        accounts[5].clone()
-    } else if accounts.len() > 3 {
-        accounts[3].clone()
+    // Destination mint (output) is at [8]
+    let output_mint = if accounts.len() > 8 {
+        accounts[8].clone()
     } else {
         String::new()
     };
@@ -352,15 +360,18 @@ mod tests {
         data
     }
 
-    /// Helper to create test accounts
+    /// Helper to create test accounts matching Jupiter v6 SharedAccountsRoute layout
     fn create_test_accounts() -> Vec<String> {
         vec![
-            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(), // Token program
-            "UserWallet123456789012345678901234567890AB".to_string(),  // User
-            "SourceTokenAccount12345678901234567890ABCD".to_string(),  // Source
-            "DestTokenAccount123456789012345678901234AB".to_string(),  // Dest
-            "IntermediateAccount12345678901234567890AB".to_string(),   // Intermediate
-            "OutputMintAddress12345678901234567890ABCD".to_string(),   // Output mint
+            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(), // [0] token_program
+            "ProgramAuthority1234567890123456789012345".to_string(),    // [1] program_authority
+            "UserWallet123456789012345678901234567890AB".to_string(),   // [2] user_transfer_authority
+            "SourceTokenAccount12345678901234567890ABCD".to_string(),   // [3] source_token_account
+            "ProgramSourceToken1234567890123456789012AB".to_string(),   // [4] program_source_token_account
+            "ProgramDestToken12345678901234567890123ABC".to_string(),   // [5] program_destination_token_account
+            "DestTokenAccount123456789012345678901234AB".to_string(),   // [6] destination_token_account
+            "InputMintAddress123456789012345678901234AB".to_string(),   // [7] source_mint (input)
+            "OutputMintAddress12345678901234567890ABCD".to_string(),    // [8] destination_mint (output)
         ]
     }
 
@@ -396,8 +407,8 @@ mod tests {
         let accounts = create_test_accounts();
         let (input_mint, output_mint, user_wallet) = extract_mints_from_accounts(&accounts);
 
-        assert_eq!(user_wallet, "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA");
-        assert_eq!(input_mint, "SourceTokenAccount12345678901234567890ABCD");
+        assert_eq!(user_wallet, "UserWallet123456789012345678901234567890AB");
+        assert_eq!(input_mint, "InputMintAddress123456789012345678901234AB");
         assert_eq!(output_mint, "OutputMintAddress12345678901234567890ABCD");
     }
 
