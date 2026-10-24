@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-10-24
+
+### Changed
+- Migrated from prost to buffa: substreams 0.8.0, substreams-solana 0.16, substreams-database-change 5.0.0, buffa 0.9.2.
+- Database changes spkg import bumped to v5.0.0; dropped the unused sql protodefs v1.0.7 import.
+- Package description now leads with "Jupiter DEX aggregator on Solana".
+
+### Notes
+- Output is identical to the v0.5.1 source tree (db_out compared by table/pk/values; all map modules byte-identical).
+- First published build to include the mint-extraction / inner-instruction false-positive fix (commit ff11a8c), which was committed after the v0.5.1 spkg was published.
+
 ## [0.3.2] - 2025-01-25
 
 ### Added

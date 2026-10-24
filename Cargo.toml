@@ -1,6 +1,6 @@
 [package]
 name = "jupiter-dex-substreams"
-version = "0.5.1"
+version = "0.6.0"
 edition = "2021"
 description = "High-performance Substreams for Jupiter DEX with OHLCV candles, SQL sink support (PostgreSQL/ClickHouse), and delta updates"
 license = "MIT"
@@ -13,20 +13,24 @@ crate-type = ["cdylib"]
 
 [dependencies]
 # Substreams core dependencies
-substreams = "0.7"
-substreams-solana = "0.14.2"
+substreams = "0.8.0"
+substreams-solana = "0.16.0"
 
 # Database sink support
-substreams-database-change = "4"
+substreams-database-change = "5.0.0"
 
 # Protobuf serialization
-prost = "0.13"
-prost-types = "0.13"
+buffa = "0.9.2"
+buffa-types = "0.9.2"
 
 # Utility dependencies
 anyhow = "1.0"
 hex = "0.4"
 bs58 = "0.5"
+
+# WASM compatibility
+[target.wasm32-unknown-unknown.dependencies]
+getrandom = { version = "0.2", features = ["custom"] }
 
 [profile.release]
 lto = true
