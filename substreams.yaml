@@ -1,10 +1,10 @@
 specVersion: v0.1.0
 package:
   name: jupiter-dex-substreams
-  version: v0.6.0
+  version: v1.0.0
   url: https://github.com/PaulieB14/Jupiter-Dex-Substreams
   image: assets/icon.png
-  description: "Jupiter DEX aggregator on Solana: swaps, volume, OHLCV candles, traders and token stats. High-performance Substreams with OHLCV candles, SQL sink support (PostgreSQL/ClickHouse), delta updates, and comprehensive swap parsing for Jupiter v2-v6, Limit Orders, and DCA."
+  description: "Jupiter DEX aggregator on Solana: swaps (v6 incl. route_v2, JupiterZ RFQ), volume, OHLCV candles, traders, token stats + xStocks tokenized-stock volume. High-performance Substreams with OHLCV candles, SQL sink support (PostgreSQL/ClickHouse), delta updates, and comprehensive swap parsing for Jupiter v2-v6, Limit Orders, and DCA."
 
 imports:
   sol: https://spkg.io/streamingfast/solana-common-v0.3.1.spkg
@@ -29,7 +29,7 @@ protobuf:
 network: solana
 
 params:
-  sol:transactions_by_programid_without_votes: "program:JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 || program:JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB || program:JUP3c2Uh3WA4Ng34tw6kPd2G4C5BB21Xo36Je1s32Ph || program:JUP2jxvXaqu7NQY1GmNF4m1vodw12LVXYxbFL2uJvfo || program:jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu || program:DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M"
+  sol:transactions_by_programid_without_votes: "program:JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 || program:JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB || program:JUP3c2Uh3WA4Ng34tw6kPd2G4C5BB21Xo36Je1s32Ph || program:JUP2jxvXaqu7NQY1GmNF4m1vodw12LVXYxbFL2uJvfo || program:jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu || program:DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M || program:j1o2qRpjcyUwEvwtcfhEQefh773ZgjxcVRry7LDqg5X || program:61DFfeTKM7trxYcPQCM78bJ794ddZprZpAwAnLiwTpYH || program:2En5Y11SEAGLNmEezTuRUCwTyzyNReHaMbSnS5gjGsL1"
 
 modules:
   #############################################################################
@@ -44,7 +44,7 @@ modules:
     blockFilter:
       module: sol:program_ids_without_votes
       query:
-        string: "program:JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 || program:JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB || program:JUP3c2Uh3WA4Ng34tw6kPd2G4C5BB21Xo36Je1s32Ph || program:JUP2jxvXaqu7NQY1GmNF4m1vodw12LVXYxbFL2uJvfo || program:jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu || program:DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M"
+        string: "program:JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 || program:JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB || program:JUP3c2Uh3WA4Ng34tw6kPd2G4C5BB21Xo36Je1s32Ph || program:JUP2jxvXaqu7NQY1GmNF4m1vodw12LVXYxbFL2uJvfo || program:jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu || program:DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M || program:j1o2qRpjcyUwEvwtcfhEQefh773ZgjxcVRry7LDqg5X || program:61DFfeTKM7trxYcPQCM78bJ794ddZprZpAwAnLiwTpYH || program:2En5Y11SEAGLNmEezTuRUCwTyzyNReHaMbSnS5gjGsL1"
     inputs:
       - source: sf.solana.type.v1.Block
     output:
@@ -62,7 +62,7 @@ modules:
     blockFilter:
       module: sol:program_ids_without_votes
       query:
-        string: "program:JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 || program:JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB || program:JUP3c2Uh3WA4Ng34tw6kPd2G4C5BB21Xo36Je1s32Ph || program:JUP2jxvXaqu7NQY1GmNF4m1vodw12LVXYxbFL2uJvfo || program:jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu || program:DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M"
+        string: "program:JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 || program:JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB || program:JUP3c2Uh3WA4Ng34tw6kPd2G4C5BB21Xo36Je1s32Ph || program:JUP2jxvXaqu7NQY1GmNF4m1vodw12LVXYxbFL2uJvfo || program:jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu || program:DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M || program:j1o2qRpjcyUwEvwtcfhEQefh773ZgjxcVRry7LDqg5X || program:61DFfeTKM7trxYcPQCM78bJ794ddZprZpAwAnLiwTpYH || program:2En5Y11SEAGLNmEezTuRUCwTyzyNReHaMbSnS5gjGsL1"
     inputs:
       - source: sf.solana.type.v1.Block
     output:
@@ -88,7 +88,7 @@ modules:
     blockFilter:
       module: sol:program_ids_without_votes
       query:
-        string: "program:JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 || program:JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB || program:JUP3c2Uh3WA4Ng34tw6kPd2G4C5BB21Xo36Je1s32Ph || program:JUP2jxvXaqu7NQY1GmNF4m1vodw12LVXYxbFL2uJvfo || program:jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu || program:DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M"
+        string: "program:JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4 || program:JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB || program:JUP3c2Uh3WA4Ng34tw6kPd2G4C5BB21Xo36Je1s32Ph || program:JUP2jxvXaqu7NQY1GmNF4m1vodw12LVXYxbFL2uJvfo || program:jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu || program:DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M || program:j1o2qRpjcyUwEvwtcfhEQefh773ZgjxcVRry7LDqg5X || program:61DFfeTKM7trxYcPQCM78bJ794ddZprZpAwAnLiwTpYH || program:2En5Y11SEAGLNmEezTuRUCwTyzyNReHaMbSnS5gjGsL1"
     inputs:
       - source: sf.solana.type.v1.Block
       - map: map_spl_initialized_account

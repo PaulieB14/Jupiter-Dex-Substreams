@@ -895,6 +895,29 @@ pub struct TradingDataLazyView<'a> {
     pub output_mint: &'a str,
     /// Field 11: `user_wallet`
     pub user_wallet: &'a str,
+    /// v1.0.0 additions
+    /// Decoded instruction name (route, route_v2, shared_accounts_route_v2, ..., rfq_fill); empty if not a swap
+    ///
+    /// Field 12: `instruction_type`
+    pub instruction_type: &'a str,
+    /// Position of this instruction in the transaction's walk order (top-level + inner), unique per tx
+    ///
+    /// Field 13: `instruction_index`
+    pub instruction_index: u32,
+    /// Quoted counter-amount from the instruction args (quoted_out for exact-in, quoted_in for exact-out)
+    ///
+    /// Field 14: `quoted_amount`
+    pub quoted_amount: u64,
+    /// "event" when amounts come from Jupiter SwapEvent/SwapsEvent CPI logs, "args" when from instruction args
+    ///
+    /// Field 15: `amount_source`
+    pub amount_source: &'a str,
+    /// Underlying ticker (e.g. AAPL) when the input/output mint is an official tokenized stock (xStocks)
+    ///
+    /// Field 16: `input_stock_ticker`
+    pub input_stock_ticker: &'a str,
+    /// Field 17: `output_stock_ticker`
+    pub output_stock_ticker: &'a str,
 }
 impl<'a> TradingDataLazyView<'a> {
     /// Decode from `buf` under the limits carried by `ctx`, recording
@@ -997,6 +1020,48 @@ impl<'a> TradingDataLazyView<'a> {
                     )?;
                     view.user_wallet = ::buffa::types::borrow_str(&mut cur)?;
                 }
+                12u32 => {
+                    ::buffa::encoding::check_wire_type(
+                        tag,
+                        ::buffa::encoding::WireType::LengthDelimited,
+                    )?;
+                    view.instruction_type = ::buffa::types::borrow_str(&mut cur)?;
+                }
+                13u32 => {
+                    ::buffa::encoding::check_wire_type(
+                        tag,
+                        ::buffa::encoding::WireType::Varint,
+                    )?;
+                    view.instruction_index = ::buffa::types::decode_uint32(&mut cur)?;
+                }
+                14u32 => {
+                    ::buffa::encoding::check_wire_type(
+                        tag,
+                        ::buffa::encoding::WireType::Varint,
+                    )?;
+                    view.quoted_amount = ::buffa::types::decode_uint64(&mut cur)?;
+                }
+                15u32 => {
+                    ::buffa::encoding::check_wire_type(
+                        tag,
+                        ::buffa::encoding::WireType::LengthDelimited,
+                    )?;
+                    view.amount_source = ::buffa::types::borrow_str(&mut cur)?;
+                }
+                16u32 => {
+                    ::buffa::encoding::check_wire_type(
+                        tag,
+                        ::buffa::encoding::WireType::LengthDelimited,
+                    )?;
+                    view.input_stock_ticker = ::buffa::types::borrow_str(&mut cur)?;
+                }
+                17u32 => {
+                    ::buffa::encoding::check_wire_type(
+                        tag,
+                        ::buffa::encoding::WireType::LengthDelimited,
+                    )?;
+                    view.output_stock_ticker = ::buffa::types::borrow_str(&mut cur)?;
+                }
                 3u32 => {
                     ::buffa::encoding::check_wire_type(
                         tag,
@@ -1062,6 +1127,12 @@ impl<'a> ::buffa::LazyMessageView<'a> for TradingDataLazyView<'a> {
             input_mint: self.input_mint.to_string(),
             output_mint: self.output_mint.to_string(),
             user_wallet: self.user_wallet.to_string(),
+            instruction_type: self.instruction_type.to_string(),
+            instruction_index: self.instruction_index,
+            quoted_amount: self.quoted_amount,
+            amount_source: self.amount_source.to_string(),
+            input_stock_ticker: self.input_stock_ticker.to_string(),
+            output_stock_ticker: self.output_stock_ticker.to_string(),
             ..::core::default::Default::default()
         })
     }
@@ -1120,6 +1191,35 @@ impl<'a> TradingDataLazyView<'a> {
         if !self.user_wallet.is_empty() {
             size += 1u64 + ::buffa::types::string_encoded_len(&self.user_wallet) as u64;
         }
+        if !self.instruction_type.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.instruction_type) as u64;
+        }
+        if self.instruction_index != 0u32 {
+            size
+                += 1u64
+                    + ::buffa::types::uint32_encoded_len(self.instruction_index) as u64;
+        }
+        if self.quoted_amount != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.quoted_amount) as u64;
+        }
+        if !self.amount_source.is_empty() {
+            size
+                += 1u64 + ::buffa::types::string_encoded_len(&self.amount_source) as u64;
+        }
+        if !self.input_stock_ticker.is_empty() {
+            size
+                += 2u64
+                    + ::buffa::types::string_encoded_len(&self.input_stock_ticker)
+                        as u64;
+        }
+        if !self.output_stock_ticker.is_empty() {
+            size
+                += 2u64
+                    + ::buffa::types::string_encoded_len(&self.output_stock_ticker)
+                        as u64;
+        }
         ::buffa::saturate_size(size)
     }
     /// Write the encoded bytes to `buf`, reading per-message sizes
@@ -1167,6 +1267,24 @@ impl<'a> TradingDataLazyView<'a> {
         }
         if !self.user_wallet.is_empty() {
             ::buffa::types::put_string_field(11u32, &self.user_wallet, buf);
+        }
+        if !self.instruction_type.is_empty() {
+            ::buffa::types::put_string_field(12u32, &self.instruction_type, buf);
+        }
+        if self.instruction_index != 0u32 {
+            ::buffa::types::put_uint32_field(13u32, self.instruction_index, buf);
+        }
+        if self.quoted_amount != 0u64 {
+            ::buffa::types::put_uint64_field(14u32, self.quoted_amount, buf);
+        }
+        if !self.amount_source.is_empty() {
+            ::buffa::types::put_string_field(15u32, &self.amount_source, buf);
+        }
+        if !self.input_stock_ticker.is_empty() {
+            ::buffa::types::put_string_field(16u32, &self.input_stock_ticker, buf);
+        }
+        if !self.output_stock_ticker.is_empty() {
+            ::buffa::types::put_string_field(17u32, &self.output_stock_ticker, buf);
         }
     }
     /// Compute size, then write. Primary encode entry point.

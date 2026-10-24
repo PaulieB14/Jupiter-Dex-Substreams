@@ -440,6 +440,29 @@ pub struct TradingData {
     pub output_mint: ::buffa::alloc::string::String,
     /// Field 11: `user_wallet`
     pub user_wallet: ::buffa::alloc::string::String,
+    /// v1.0.0 additions
+    /// Decoded instruction name (route, route_v2, shared_accounts_route_v2, ..., rfq_fill); empty if not a swap
+    ///
+    /// Field 12: `instruction_type`
+    pub instruction_type: ::buffa::alloc::string::String,
+    /// Position of this instruction in the transaction's walk order (top-level + inner), unique per tx
+    ///
+    /// Field 13: `instruction_index`
+    pub instruction_index: u32,
+    /// Quoted counter-amount from the instruction args (quoted_out for exact-in, quoted_in for exact-out)
+    ///
+    /// Field 14: `quoted_amount`
+    pub quoted_amount: u64,
+    /// "event" when amounts come from Jupiter SwapEvent/SwapsEvent CPI logs, "args" when from instruction args
+    ///
+    /// Field 15: `amount_source`
+    pub amount_source: ::buffa::alloc::string::String,
+    /// Underlying ticker (e.g. AAPL) when the input/output mint is an official tokenized stock (xStocks)
+    ///
+    /// Field 16: `input_stock_ticker`
+    pub input_stock_ticker: ::buffa::alloc::string::String,
+    /// Field 17: `output_stock_ticker`
+    pub output_stock_ticker: ::buffa::alloc::string::String,
 }
 impl ::core::fmt::Debug for TradingData {
     fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
@@ -455,6 +478,12 @@ impl ::core::fmt::Debug for TradingData {
             .field("input_mint", &self.input_mint)
             .field("output_mint", &self.output_mint)
             .field("user_wallet", &self.user_wallet)
+            .field("instruction_type", &self.instruction_type)
+            .field("instruction_index", &self.instruction_index)
+            .field("quoted_amount", &self.quoted_amount)
+            .field("amount_source", &self.amount_source)
+            .field("input_stock_ticker", &self.input_stock_ticker)
+            .field("output_stock_ticker", &self.output_stock_ticker)
             .finish()
     }
 }
@@ -520,6 +549,35 @@ impl ::buffa::Message for TradingData {
         if !self.user_wallet.is_empty() {
             size += 1u64 + ::buffa::types::string_encoded_len(&self.user_wallet) as u64;
         }
+        if !self.instruction_type.is_empty() {
+            size
+                += 1u64
+                    + ::buffa::types::string_encoded_len(&self.instruction_type) as u64;
+        }
+        if self.instruction_index != 0u32 {
+            size
+                += 1u64
+                    + ::buffa::types::uint32_encoded_len(self.instruction_index) as u64;
+        }
+        if self.quoted_amount != 0u64 {
+            size += 1u64 + ::buffa::types::uint64_encoded_len(self.quoted_amount) as u64;
+        }
+        if !self.amount_source.is_empty() {
+            size
+                += 1u64 + ::buffa::types::string_encoded_len(&self.amount_source) as u64;
+        }
+        if !self.input_stock_ticker.is_empty() {
+            size
+                += 2u64
+                    + ::buffa::types::string_encoded_len(&self.input_stock_ticker)
+                        as u64;
+        }
+        if !self.output_stock_ticker.is_empty() {
+            size
+                += 2u64
+                    + ::buffa::types::string_encoded_len(&self.output_stock_ticker)
+                        as u64;
+        }
         ::buffa::saturate_size(size)
     }
     fn write_to(
@@ -561,6 +619,24 @@ impl ::buffa::Message for TradingData {
         }
         if !self.user_wallet.is_empty() {
             ::buffa::types::put_string_field(11u32, &self.user_wallet, buf);
+        }
+        if !self.instruction_type.is_empty() {
+            ::buffa::types::put_string_field(12u32, &self.instruction_type, buf);
+        }
+        if self.instruction_index != 0u32 {
+            ::buffa::types::put_uint32_field(13u32, self.instruction_index, buf);
+        }
+        if self.quoted_amount != 0u64 {
+            ::buffa::types::put_uint64_field(14u32, self.quoted_amount, buf);
+        }
+        if !self.amount_source.is_empty() {
+            ::buffa::types::put_string_field(15u32, &self.amount_source, buf);
+        }
+        if !self.input_stock_ticker.is_empty() {
+            ::buffa::types::put_string_field(16u32, &self.input_stock_ticker, buf);
+        }
+        if !self.output_stock_ticker.is_empty() {
+            ::buffa::types::put_string_field(17u32, &self.output_stock_ticker, buf);
         }
     }
     fn merge_field(
@@ -655,6 +731,48 @@ impl ::buffa::Message for TradingData {
                 )?;
                 ::buffa::types::merge_string(&mut self.user_wallet, buf)?;
             }
+            12u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.instruction_type, buf)?;
+            }
+            13u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.instruction_index = ::buffa::types::decode_uint32(buf)?;
+            }
+            14u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.quoted_amount = ::buffa::types::decode_uint64(buf)?;
+            }
+            15u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.amount_source, buf)?;
+            }
+            16u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.input_stock_ticker, buf)?;
+            }
+            17u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.output_stock_ticker, buf)?;
+            }
             _ => {
                 ::buffa::encoding::skip_field_depth(tag, buf, ctx.depth())?;
             }
@@ -673,6 +791,12 @@ impl ::buffa::Message for TradingData {
         self.input_mint.clear();
         self.output_mint.clear();
         self.user_wallet.clear();
+        self.instruction_type.clear();
+        self.instruction_index = 0u32;
+        self.quoted_amount = 0u64;
+        self.amount_source.clear();
+        self.input_stock_ticker.clear();
+        self.output_stock_ticker.clear();
     }
 }
 #[derive(Clone, PartialEq, Default)]

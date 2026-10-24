@@ -24,14 +24,26 @@ pub const JUPITER_LIMIT_ORDERS_PROGRAM_ID: &str = "jupoNjAxXgZ4rjzxzPMP4oxduvQsQ
 /// Jupiter DCA (Dollar Cost Averaging) Program
 pub const JUPITER_DCA_PROGRAM_ID: &str = "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M";
 
+/// Jupiter Limit Order v2 (Trigger) Program
+pub const JUPITER_LIMIT_ORDER_V2_PROGRAM_ID: &str = "j1o2qRpjcyUwEvwtcfhEQefh773ZgjxcVRry7LDqg5X";
+
+/// JupiterZ RFQ Order Engine (Ultra RFQ fills), maker-pays-gas deployment
+pub const JUPITER_ORDER_ENGINE_PROGRAM_ID: &str = "61DFfeTKM7trxYcPQCM78bJ794ddZprZpAwAnLiwTpYH";
+
+/// JupiterZ RFQ Order Engine, second deployment (same IDL)
+pub const JUPITER_ORDER_ENGINE_2_PROGRAM_ID: &str = "2En5Y11SEAGLNmEezTuRUCwTyzyNReHaMbSnS5gjGsL1";
+
 /// All Jupiter Program IDs for filtering
-pub const JUPITER_PROGRAM_IDS: [&str; 6] = [
+pub const JUPITER_PROGRAM_IDS: [&str; 9] = [
     JUPITER_V6_PROGRAM_ID,
     JUPITER_V4_PROGRAM_ID,
     JUPITER_V3_PROGRAM_ID,
     JUPITER_V2_PROGRAM_ID,
     JUPITER_LIMIT_ORDERS_PROGRAM_ID,
     JUPITER_DCA_PROGRAM_ID,
+    JUPITER_LIMIT_ORDER_V2_PROGRAM_ID,
+    JUPITER_ORDER_ENGINE_PROGRAM_ID,
+    JUPITER_ORDER_ENGINE_2_PROGRAM_ID,
 ];
 
 /// Check if a program ID is a Jupiter swap program (v2-v6)
@@ -49,7 +61,7 @@ pub fn is_jupiter_swap_program(program_id: &str) -> bool {
 /// Check if a program ID is Jupiter Limit Orders
 #[inline]
 pub fn is_jupiter_limit_orders(program_id: &str) -> bool {
-    program_id == JUPITER_LIMIT_ORDERS_PROGRAM_ID
+    program_id == JUPITER_LIMIT_ORDERS_PROGRAM_ID || program_id == JUPITER_LIMIT_ORDER_V2_PROGRAM_ID
 }
 
 /// Check if a program ID is Jupiter DCA
@@ -73,6 +85,8 @@ pub fn get_jupiter_version(program_id: &str) -> Option<&'static str> {
         JUPITER_V2_PROGRAM_ID => Some("v2"),
         JUPITER_LIMIT_ORDERS_PROGRAM_ID => Some("limit_orders"),
         JUPITER_DCA_PROGRAM_ID => Some("dca"),
+        JUPITER_LIMIT_ORDER_V2_PROGRAM_ID => Some("limit_order_v2"),
+        JUPITER_ORDER_ENGINE_PROGRAM_ID | JUPITER_ORDER_ENGINE_2_PROGRAM_ID => Some("jupiterz_rfq"),
         _ => None,
     }
 }

@@ -7,6 +7,8 @@ pub mod jupiter_instructions;
 pub mod jupiter_analytics;
 pub mod db_out;
 pub mod stores;
+pub mod stocks;
+pub mod stocks_registry;
 
 pub use spl_account_store::map_spl_initialized_account;
 pub use jupiter_trading_store::map_jupiter_trading_data;

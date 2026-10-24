@@ -19,6 +19,12 @@ CREATE TABLE IF NOT EXISTS jupiter_swaps (
     input_mint VARCHAR(44),
     output_mint VARCHAR(44),
     user_wallet VARCHAR(44),
+    instruction_type VARCHAR(64),
+    instruction_index INTEGER,
+    quoted_amount NUMERIC(78,0),
+    amount_source VARCHAR(8),
+    input_stock_ticker VARCHAR(32),
+    output_stock_ticker VARCHAR(32),
     created_at TIMESTAMP DEFAULT NOW()
 );
 
@@ -371,3 +377,22 @@ BEGIN
     LIMIT p_limit;
 END;
 $$ LANGUAGE plpgsql;
+
+--------------------------------------------------------------------------------
+-- TOKENIZED STOCKS (xStocks) DAILY VOLUME (Delta Updates)
+--------------------------------------------------------------------------------
+-- Raw amounts: shares in token base units (xStocks use 8 decimals); usd_volume_raw in micro-USD
+-- (only the USDC/USDT/USDG side of a trade is counted).
+CREATE TABLE IF NOT EXISTS stock_daily_volume (
+    ticker VARCHAR(32) NOT NULL,
+    date VARCHAR(10) NOT NULL,
+    stock_mint VARCHAR(44),
+    buy_count BIGINT DEFAULT 0,
+    sell_count BIGINT DEFAULT 0,
+    shares_bought_raw NUMERIC(78,0) DEFAULT 0,
+    shares_sold_raw NUMERIC(78,0) DEFAULT 0,
+    usd_volume_raw NUMERIC(78,0) DEFAULT 0,
+    PRIMARY KEY (ticker, date)
+);
+CREATE INDEX IF NOT EXISTS idx_swaps_in_stock ON jupiter_swaps(input_stock_ticker) WHERE input_stock_ticker <> '';
+CREATE INDEX IF NOT EXISTS idx_swaps_out_stock ON jupiter_swaps(output_stock_ticker) WHERE output_stock_ticker <> '';
