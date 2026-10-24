@@ -25,6 +25,8 @@ CREATE TABLE IF NOT EXISTS jupiter_swaps (
     amount_source VARCHAR(8),
     input_stock_ticker VARCHAR(32),
     output_stock_ticker VARCHAR(32),
+    platform_fee_amount NUMERIC(78,0),
+    platform_fee_mint VARCHAR(44),
     created_at TIMESTAMP DEFAULT NOW()
 );
 

@@ -4,7 +4,7 @@ package:
   version: v1.0.0
   url: https://github.com/PaulieB14/Jupiter-Dex-Substreams
   image: assets/icon.png
-  description: "Jupiter DEX aggregator on Solana: swaps (v6 incl. route_v2, JupiterZ RFQ), volume, OHLCV candles, traders, token stats + xStocks tokenized-stock volume. High-performance Substreams with OHLCV candles, SQL sink support (PostgreSQL/ClickHouse), delta updates, and comprehensive swap parsing for Jupiter v2-v6, Limit Orders, and DCA."
+  description: "Jupiter DEX aggregator on Solana: swaps (v6 incl. route_v2, JupiterZ RFQ), volume, OHLCV candles, traders, token stats + xStocks tokenized-stock volume. SQL sink (PostgreSQL/ClickHouse). v1.0.0 is breaking: resync SQL sinks."
 
 imports:
   sol: https://spkg.io/streamingfast/solana-common-v0.3.1.spkg

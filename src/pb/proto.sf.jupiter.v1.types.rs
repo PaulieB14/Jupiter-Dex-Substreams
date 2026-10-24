@@ -463,6 +463,12 @@ pub struct TradingData {
     pub input_stock_ticker: ::buffa::alloc::string::String,
     /// Field 17: `output_stock_ticker`
     pub output_stock_ticker: ::buffa::alloc::string::String,
+    /// Platform fee from Jupiter FeeEvent (emitted by v1 routes; v2 routes do not log fees, so 0 there)
+    ///
+    /// Field 18: `platform_fee_amount`
+    pub platform_fee_amount: u64,
+    /// Field 19: `platform_fee_mint`
+    pub platform_fee_mint: ::buffa::alloc::string::String,
 }
 impl ::core::fmt::Debug for TradingData {
     fn fmt(&self, f: &mut ::core::fmt::Formatter<'_>) -> ::core::fmt::Result {
@@ -484,6 +490,8 @@ impl ::core::fmt::Debug for TradingData {
             .field("amount_source", &self.amount_source)
             .field("input_stock_ticker", &self.input_stock_ticker)
             .field("output_stock_ticker", &self.output_stock_ticker)
+            .field("platform_fee_amount", &self.platform_fee_amount)
+            .field("platform_fee_mint", &self.platform_fee_mint)
             .finish()
     }
 }
@@ -578,6 +586,17 @@ impl ::buffa::Message for TradingData {
                     + ::buffa::types::string_encoded_len(&self.output_stock_ticker)
                         as u64;
         }
+        if self.platform_fee_amount != 0u64 {
+            size
+                += 2u64
+                    + ::buffa::types::uint64_encoded_len(self.platform_fee_amount)
+                        as u64;
+        }
+        if !self.platform_fee_mint.is_empty() {
+            size
+                += 2u64
+                    + ::buffa::types::string_encoded_len(&self.platform_fee_mint) as u64;
+        }
         ::buffa::saturate_size(size)
     }
     fn write_to(
@@ -637,6 +656,12 @@ impl ::buffa::Message for TradingData {
         }
         if !self.output_stock_ticker.is_empty() {
             ::buffa::types::put_string_field(17u32, &self.output_stock_ticker, buf);
+        }
+        if self.platform_fee_amount != 0u64 {
+            ::buffa::types::put_uint64_field(18u32, self.platform_fee_amount, buf);
+        }
+        if !self.platform_fee_mint.is_empty() {
+            ::buffa::types::put_string_field(19u32, &self.platform_fee_mint, buf);
         }
     }
     fn merge_field(
@@ -773,6 +798,20 @@ impl ::buffa::Message for TradingData {
                 )?;
                 ::buffa::types::merge_string(&mut self.output_stock_ticker, buf)?;
             }
+            18u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                self.platform_fee_amount = ::buffa::types::decode_uint64(buf)?;
+            }
+            19u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                ::buffa::types::merge_string(&mut self.platform_fee_mint, buf)?;
+            }
             _ => {
                 ::buffa::encoding::skip_field_depth(tag, buf, ctx.depth())?;
             }
@@ -797,6 +836,8 @@ impl ::buffa::Message for TradingData {
         self.amount_source.clear();
         self.input_stock_ticker.clear();
         self.output_stock_ticker.clear();
+        self.platform_fee_amount = 0u64;
+        self.platform_fee_mint.clear();
     }
 }
 #[derive(Clone, PartialEq, Default)]

@@ -775,6 +775,12 @@ pub struct TradingDataView<'a> {
     pub input_stock_ticker: &'a str,
     /// Field 17: `output_stock_ticker`
     pub output_stock_ticker: &'a str,
+    /// Platform fee from Jupiter FeeEvent (emitted by v1 routes; v2 routes do not log fees, so 0 there)
+    ///
+    /// Field 18: `platform_fee_amount`
+    pub platform_fee_amount: u64,
+    /// Field 19: `platform_fee_mint`
+    pub platform_fee_mint: &'a str,
 }
 impl<'a> ::buffa::MessageView<'a> for TradingDataView<'a> {
     type Owned = super::super::TradingData;
@@ -918,6 +924,20 @@ impl<'a> ::buffa::MessageView<'a> for TradingDataView<'a> {
                 )?;
                 view.output_stock_ticker = ::buffa::types::borrow_str(&mut cur)?;
             }
+            18u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::Varint,
+                )?;
+                view.platform_fee_amount = ::buffa::types::decode_uint64(&mut cur)?;
+            }
+            19u32 => {
+                ::buffa::encoding::check_wire_type(
+                    tag,
+                    ::buffa::encoding::WireType::LengthDelimited,
+                )?;
+                view.platform_fee_mint = ::buffa::types::borrow_str(&mut cur)?;
+            }
             3u32 => {
                 ::buffa::encoding::check_wire_type(
                     tag,
@@ -966,6 +986,8 @@ impl<'a> ::buffa::MessageView<'a> for TradingDataView<'a> {
             amount_source: self.amount_source.to_string(),
             input_stock_ticker: self.input_stock_ticker.to_string(),
             output_stock_ticker: self.output_stock_ticker.to_string(),
+            platform_fee_amount: self.platform_fee_amount,
+            platform_fee_mint: self.platform_fee_mint.to_string(),
             ..::core::default::Default::default()
         })
     }
@@ -1040,6 +1062,17 @@ impl<'a> ::buffa::ViewEncode<'a> for TradingDataView<'a> {
                     + ::buffa::types::string_encoded_len(&self.output_stock_ticker)
                         as u64;
         }
+        if self.platform_fee_amount != 0u64 {
+            size
+                += 2u64
+                    + ::buffa::types::uint64_encoded_len(self.platform_fee_amount)
+                        as u64;
+        }
+        if !self.platform_fee_mint.is_empty() {
+            size
+                += 2u64
+                    + ::buffa::types::string_encoded_len(&self.platform_fee_mint) as u64;
+        }
         ::buffa::saturate_size(size)
     }
     #[allow(clippy::needless_borrow)]
@@ -1100,6 +1133,12 @@ impl<'a> ::buffa::ViewEncode<'a> for TradingDataView<'a> {
         }
         if !self.output_stock_ticker.is_empty() {
             ::buffa::types::put_string_field(17u32, &self.output_stock_ticker, buf);
+        }
+        if self.platform_fee_amount != 0u64 {
+            ::buffa::types::put_uint64_field(18u32, self.platform_fee_amount, buf);
+        }
+        if !self.platform_fee_mint.is_empty() {
+            ::buffa::types::put_string_field(19u32, &self.platform_fee_mint, buf);
         }
     }
 }
@@ -1288,6 +1327,18 @@ impl TradingDataOwnedView {
     #[must_use]
     pub fn output_stock_ticker(&self) -> &'_ str {
         self.0.reborrow().output_stock_ticker
+    }
+    /// Platform fee from Jupiter FeeEvent (emitted by v1 routes; v2 routes do not log fees, so 0 there)
+    ///
+    /// Field 18: `platform_fee_amount`
+    #[must_use]
+    pub fn platform_fee_amount(&self) -> u64 {
+        self.0.reborrow().platform_fee_amount
+    }
+    /// Field 19: `platform_fee_mint`
+    #[must_use]
+    pub fn platform_fee_mint(&self) -> &'_ str {
+        self.0.reborrow().platform_fee_mint
     }
 }
 impl ::core::convert::From<::buffa::OwnedView<TradingDataView<'static>>>

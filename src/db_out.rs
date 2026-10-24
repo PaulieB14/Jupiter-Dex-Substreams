@@ -67,7 +67,9 @@ pub fn db_out(
             .set("quoted_amount", trade.quoted_amount.to_string())
             .set("amount_source", &trade.amount_source)
             .set("input_stock_ticker", &trade.input_stock_ticker)
-            .set("output_stock_ticker", &trade.output_stock_ticker);
+            .set("output_stock_ticker", &trade.output_stock_ticker)
+            .set("platform_fee_amount", trade.platform_fee_amount.to_string())
+            .set("platform_fee_mint", &trade.platform_fee_mint);
 
         // Tokenized-stock daily volume per underlying ticker
         let date = format_date(trade.block_time);

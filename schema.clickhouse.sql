@@ -26,6 +26,8 @@ CREATE TABLE IF NOT EXISTS jupiter_swaps (
     amount_source LowCardinality(String),
     input_stock_ticker LowCardinality(String),
     output_stock_ticker LowCardinality(String),
+    platform_fee_amount UInt256,
+    platform_fee_mint String,
     date Date MATERIALIZED toDate(fromUnixTimestamp(block_time))
 ) ENGINE = MergeTree()
 PARTITION BY toYYYYMM(date)

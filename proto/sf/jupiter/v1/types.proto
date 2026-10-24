@@ -51,6 +51,9 @@ message TradingData {
   // Underlying ticker (e.g. AAPL) when the input/output mint is an official tokenized stock (xStocks)
   string input_stock_ticker = 16;
   string output_stock_ticker = 17;
+  // Platform fee from Jupiter FeeEvent (emitted by v1 routes; v2 routes do not log fees, so 0 there)
+  uint64 platform_fee_amount = 18;
+  string platform_fee_mint = 19;
 }
 
 message TokenPrice {

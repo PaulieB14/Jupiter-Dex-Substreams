@@ -31,6 +31,7 @@ const SHARED_ACCOUNTS_EXACT_OUT_ROUTE_V2: [u8; 8] = [53, 96, 229, 202, 216, 187,
 const EVENT_IX_TAG: [u8; 8] = [0xe4, 0x45, 0xa5, 0x2e, 0x51, 0xcb, 0x9a, 0x1d];
 const SWAP_EVENT: [u8; 8] = [64, 198, 205, 232, 38, 8, 113, 226];
 const SWAPS_EVENT: [u8; 8] = [152, 47, 78, 235, 192, 96, 110, 106];
+const FEE_EVENT: [u8; 8] = [73, 79, 78, 127, 184, 213, 13, 220];
 
 // JupiterZ Order Engine `fill(input_amount u64, output_amount u64, expire_at i64)`
 const RFQ_FILL: [u8; 8] = [168, 96, 183, 163, 92, 10, 40, 160];
@@ -70,6 +71,16 @@ struct SwapLeg {
 struct RouteCtx {
     item: usize,
     legs: Vec<SwapLeg>,
+    fee: Option<(String, u64)>,
+}
+
+/// FeeEvent { account, mint, amount } -> (mint, amount)
+fn parse_fee_event(d: &[u8]) -> Option<(String, u64)> {
+    if d.len() >= 8 + 72 && d[0..8] == FEE_EVENT {
+        Some((b58(&d[40..72]), read_u64_le(&d[72..80])))
+    } else {
+        None
+    }
 }
 
 #[substreams::handlers::map]
@@ -93,13 +104,16 @@ pub fn map_jupiter_trading_data(block: Block) -> Result<TradingDataList, Error> 
             if program_id_str == JUPITER_V6_PROGRAM_ID && data.len() >= 16 && data[0..8] == EVENT_IX_TAG {
                 if let Some(ctx) = routes.last_mut() {
                     ctx.legs.extend(parse_event(&data[8..]));
+                    if let Some(f) = parse_fee_event(&data[8..]) {
+                        ctx.fee = Some(f);
+                    }
                 }
             }
 
             let accounts: Vec<String> = instruction.accounts().iter().map(|a| a.to_string()).collect();
             let parsed = parse_instruction(&program_id_str, data, &accounts);
             if parsed.is_v6_route {
-                routes.push(RouteCtx { item: items.len(), legs: Vec::new() });
+                routes.push(RouteCtx { item: items.len(), legs: Vec::new(), fee: None });
             }
 
             items.push(TradingData {
@@ -125,6 +139,10 @@ pub fn map_jupiter_trading_data(block: Block) -> Result<TradingDataList, Error> 
         // Realized amounts from event logs.
         for ctx in routes {
             let item = &mut items[ctx.item];
+            if let Some((mint, amt)) = &ctx.fee {
+                item.platform_fee_mint = mint.clone();
+                item.platform_fee_amount = *amt;
+            }
             if let Some((src, a_in, a_out)) = realized(&item.input_mint, &item.output_mint, &ctx.legs) {
                 item.input_mint = src;
                 item.amount_in = a_in;
@@ -396,6 +414,14 @@ mod tests {
         let (_, a, b) = realized(&b58(&pk(1)), &b58(&pk(2)), &legs).unwrap();
         assert_eq!((a, b), (100, 51));
         assert!(realized(&b58(&pk(1)), &b58(&pk(5)), &legs).is_none());
+    }
+
+    #[test]
+    fn fee_event_decodes() {
+        let mut d = FEE_EVENT.to_vec();
+        d.extend_from_slice(&pk(1)); d.extend_from_slice(&pk(2)); d.extend_from_slice(&235_748_656u64.to_le_bytes());
+        assert_eq!(parse_fee_event(&d), Some((b58(&pk(2)), 235_748_656)));
+        assert_eq!(parse_fee_event(&SWAP_EVENT), None);
     }
 
     #[test]
