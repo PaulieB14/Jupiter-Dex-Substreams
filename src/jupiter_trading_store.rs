@@ -31,11 +31,7 @@ pub fn map_jupiter_trading_data(block: Block) -> Result<TradingDataList, Error> 
     let mut total_volume: u64 = 0;
     let mut swap_count: u32 = 0;
 
-    let block_time = block
-        .block_time
-        .as_ref()
-        .map(|ts| ts.timestamp.max(0) as u64)
-        .unwrap_or_default();
+    let block_time = block.block_time.timestamp.max(0) as u64;
 
     let slot = block.slot;
 
