@@ -39,6 +39,21 @@ message TradingData {
   string input_mint = 9;
   string output_mint = 10;
   string user_wallet = 11;
+  // v1.0.0 additions
+  // Decoded instruction name (route, route_v2, shared_accounts_route_v2, ..., rfq_fill); empty if not a swap
+  string instruction_type = 12;
+  // Position of this instruction in the transaction's walk order (top-level + inner), unique per tx
+  uint32 instruction_index = 13;
+  // Quoted counter-amount from the instruction args (quoted_out for exact-in, quoted_in for exact-out)
+  uint64 quoted_amount = 14;
+  // "event" when amounts come from Jupiter SwapEvent/SwapsEvent CPI logs, "args" when from instruction args
+  string amount_source = 15;
+  // Underlying ticker (e.g. AAPL) when the input/output mint is an official tokenized stock (xStocks)
+  string input_stock_ticker = 16;
+  string output_stock_ticker = 17;
+  // Platform fee from Jupiter FeeEvent (emitted by v1 routes; v2 routes do not log fees, so 0 there)
+  uint64 platform_fee_amount = 18;
+  string platform_fee_mint = 19;
 }
 
 message TokenPrice {

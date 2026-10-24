@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-10-24
+
+### Breaking
+- `jupiter_swaps.id` is now `tx_hash:instruction_index` (was `tx:slot:program`, which collided for multi-swap txs). Resync required.
+- Heuristic/generic amount parsing removed: only decoded swap instructions carry amounts.
+
+### Added
+- Exact Jupiter v6 decoding incl. 2025 `route_v2`/`exact_out_route_v2`/`shared_accounts_*_v2` and token-ledger variants; realized amounts from SwapEvent/SwapsEvent CPI logs.
+- JupiterZ RFQ Order Engine fills (2 deployments) and Limit Order v2 program tagging.
+- xStocks tokenized-stock registry (1,474 Solana mints from the official xStocks API); swap ticker tags; `stock_daily_volume` table.
+- New TradingData/jupiter_swaps fields: instruction_type, instruction_index, quoted_amount, amount_source, input/output_stock_ticker, platform_fee_amount/platform_fee_mint (FeeEvent).
+
 ## [0.6.0] - 2026-10-24
 
 ### Changed

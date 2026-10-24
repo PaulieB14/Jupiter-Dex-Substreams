@@ -1,68 +1,119 @@
-use crate::constants::JUPITER_PROGRAM_IDS;
+//! Jupiter trading data extraction.
+//!
+//! v1.0.0: exact decoding of Jupiter Aggregator v6 swap instructions (v1 and the 2025 `*_v2`
+//! family, incl. token-ledger variants) using Anchor discriminators and the on-chain IDL account
+//! layouts, with realized amounts taken from the program's `SwapEvent` / `SwapsEvent` self-CPI
+//! logs. JupiterZ RFQ (Order Engine) fills are decoded from their instruction args.
+//! Other Jupiter programs (DCA, limit orders) are emitted as instructions with zero amounts:
+//! their fills settle through a v6 route CPI, which is what gets counted (no double counting).
+use crate::constants::{
+    JUPITER_ORDER_ENGINE_2_PROGRAM_ID, JUPITER_ORDER_ENGINE_PROGRAM_ID, JUPITER_PROGRAM_IDS,
+    JUPITER_V6_PROGRAM_ID,
+};
 use crate::pb::sf::jupiter::v1::{TradingData, TradingDataList};
+use crate::stocks;
 use substreams::errors::Error;
 use substreams_solana::pb::sf::solana::r#type::v1::Block;
 
-// Jupiter v6 instruction discriminators
+// Jupiter v6 instruction discriminators (sha256("global:<name>")[..8])
 const ROUTE_DISCRIMINATOR: [u8; 8] = [229, 23, 203, 151, 122, 227, 173, 42];
-const SHARED_ACCOUNTS_ROUTE_DISCRIMINATOR: [u8; 8] = [193, 32, 155, 51, 65, 214, 156, 129];
+const ROUTE_WITH_TOKEN_LEDGER: [u8; 8] = [150, 86, 71, 116, 167, 93, 14, 104];
 const EXACT_OUT_ROUTE_DISCRIMINATOR: [u8; 8] = [208, 51, 239, 151, 123, 43, 237, 92];
+const SHARED_ACCOUNTS_ROUTE_DISCRIMINATOR: [u8; 8] = [193, 32, 155, 51, 65, 214, 156, 129];
+const SHARED_ACCOUNTS_ROUTE_WITH_TOKEN_LEDGER: [u8; 8] = [230, 121, 143, 80, 119, 159, 106, 170];
 const SHARED_ACCOUNTS_EXACT_OUT_ROUTE_DISCRIMINATOR: [u8; 8] = [176, 209, 105, 168, 154, 125, 69, 62];
+const ROUTE_V2: [u8; 8] = [187, 100, 250, 204, 49, 196, 175, 20];
+const EXACT_OUT_ROUTE_V2: [u8; 8] = [157, 138, 184, 82, 21, 244, 243, 36];
+const SHARED_ACCOUNTS_ROUTE_V2: [u8; 8] = [209, 152, 83, 147, 124, 254, 216, 233];
+const SHARED_ACCOUNTS_EXACT_OUT_ROUTE_V2: [u8; 8] = [53, 96, 229, 202, 216, 187, 250, 24];
 
-// Maximum reasonable token amount (10^18 - prevents parsing garbage data as amounts)
-const MAX_REASONABLE_AMOUNT: u64 = 1_000_000_000_000_000_000;
-// Minimum amount to consider valid (filters dust/noise)
-const MIN_VALID_AMOUNT: u64 = 1000;
+// Anchor event CPI: EVENT_IX_TAG (0x1d9acb512ea545e4 LE) + event discriminator
+const EVENT_IX_TAG: [u8; 8] = [0xe4, 0x45, 0xa5, 0x2e, 0x51, 0xcb, 0x9a, 0x1d];
+const SWAP_EVENT: [u8; 8] = [64, 198, 205, 232, 38, 8, 113, 226];
+const SWAPS_EVENT: [u8; 8] = [152, 47, 78, 235, 192, 96, 110, 106];
+const FEE_EVENT: [u8; 8] = [73, 79, 78, 127, 184, 213, 13, 220];
 
-/// Parsed swap result with all extracted fields
-#[derive(Default)]
+// JupiterZ Order Engine `fill(input_amount u64, output_amount u64, expire_at i64)`
+const RFQ_FILL: [u8; 8] = [168, 96, 183, 163, 92, 10, 40, 160];
+
+/// Account-index layout of a swap instruction (from the on-chain IDL).
+struct Layout {
+    name: &'static str,
+    wallet: usize,
+    src_mint: Option<usize>,
+    dst_mint: usize,
+    exact_out: bool,
+}
+
+/// Decoded swap instruction (args-level).
+#[derive(Default, Debug, Clone, PartialEq)]
 struct ParsedSwap {
+    name: &'static str,
     amount_in: u64,
     amount_out: u64,
+    quoted: u64,
     input_mint: String,
     output_mint: String,
     user_wallet: String,
+    exact_out: bool,
+    is_v6_route: bool,
+}
+
+/// One swap leg from a SwapEvent / SwapsEvent log.
+#[derive(Debug, Clone, PartialEq)]
+struct SwapLeg {
+    input_mint: String,
+    input_amount: u64,
+    output_mint: String,
+    output_amount: u64,
+}
+
+struct RouteCtx {
+    item: usize,
+    legs: Vec<SwapLeg>,
+    fee: Option<(String, u64)>,
+}
+
+/// FeeEvent { account, mint, amount } -> (mint, amount)
+fn parse_fee_event(d: &[u8]) -> Option<(String, u64)> {
+    if d.len() >= 8 + 72 && d[0..8] == FEE_EVENT {
+        Some((b58(&d[40..72]), read_u64_le(&d[72..80])))
+    } else {
+        None
+    }
 }
 
 #[substreams::handlers::map]
 pub fn map_jupiter_trading_data(block: Block) -> Result<TradingDataList, Error> {
-    // Pre-allocate with estimated capacity to avoid reallocations
-    let mut items = Vec::with_capacity(64);
-    let mut total_volume: u64 = 0;
-    let mut swap_count: u32 = 0;
-
+    let mut items: Vec<TradingData> = Vec::with_capacity(64);
     let block_time = block.block_time.timestamp.max(0) as u64;
-
     let slot = block.slot;
 
     for trx in block.transactions() {
-        // Cache tx_id once per transaction (avoid repeated clones)
         let tx_id = trx.id();
+        let mut routes: Vec<RouteCtx> = Vec::new();
 
-        for instruction in trx.walk_instructions() {
-            // Check program ID without converting to String first
-            let program_id_bytes = instruction.program_id();
-            let program_id_str = program_id_bytes.to_string();
-
+        for (ix_index, instruction) in trx.walk_instructions().enumerate() {
+            let program_id_str = instruction.program_id().to_string();
             if !is_jupiter_program(&program_id_str) {
                 continue;
             }
-
-            // Convert accounts to strings (required for output)
-            let accounts: Vec<String> = instruction
-                .accounts()
-                .iter()
-                .map(|address| address.to_string())
-                .collect();
-
             let data = instruction.data();
 
-            // Parse swap amounts from instruction data
-            let parsed = parse_jupiter_instruction(data, &accounts);
+            // Self-CPI event log: attach legs to the enclosing route.
+            if program_id_str == JUPITER_V6_PROGRAM_ID && data.len() >= 16 && data[0..8] == EVENT_IX_TAG {
+                if let Some(ctx) = routes.last_mut() {
+                    ctx.legs.extend(parse_event(&data[8..]));
+                    if let Some(f) = parse_fee_event(&data[8..]) {
+                        ctx.fee = Some(f);
+                    }
+                }
+            }
 
-            if parsed.amount_in > 0 {
-                total_volume = total_volume.saturating_add(parsed.amount_in);
-                swap_count += 1;
+            let accounts: Vec<String> = instruction.accounts().iter().map(|a| a.to_string()).collect();
+            let parsed = parse_instruction(&program_id_str, data, &accounts);
+            if parsed.is_v6_route {
+                routes.push(RouteCtx { item: items.len(), legs: Vec::new(), fee: None });
             }
 
             items.push(TradingData {
@@ -77,233 +128,169 @@ pub fn map_jupiter_trading_data(block: Block) -> Result<TradingDataList, Error> 
                 input_mint: parsed.input_mint,
                 output_mint: parsed.output_mint,
                 user_wallet: parsed.user_wallet,
+                instruction_type: parsed.name.to_string(),
+                instruction_index: ix_index as u32,
+                quoted_amount: parsed.quoted,
+                amount_source: if parsed.name.is_empty() { String::new() } else { "args".to_string() },
+                ..Default::default()
             });
+        }
+
+        // Realized amounts from event logs.
+        for ctx in routes {
+            let item = &mut items[ctx.item];
+            if let Some((mint, amt)) = &ctx.fee {
+                item.platform_fee_mint = mint.clone();
+                item.platform_fee_amount = *amt;
+            }
+            if let Some((src, a_in, a_out)) = realized(&item.input_mint, &item.output_mint, &ctx.legs) {
+                item.input_mint = src;
+                item.amount_in = a_in;
+                item.amount_out = a_out;
+                item.amount_source = "event".to_string();
+            }
         }
     }
 
-    Ok(TradingDataList {
-        items,
-        total_volume,
-        swap_count,
-    })
+    let mut total_volume: u64 = 0;
+    let mut swap_count: u32 = 0;
+    for item in items.iter_mut() {
+        if item.amount_in > 0 {
+            total_volume = total_volume.saturating_add(item.amount_in);
+            swap_count += 1;
+            item.input_stock_ticker = stocks::ticker(&item.input_mint);
+            item.output_stock_ticker = stocks::ticker(&item.output_mint);
+        }
+    }
+
+    Ok(TradingDataList { items, total_volume, swap_count })
 }
 
-/// Parse Jupiter instruction data to extract swap amounts
-/// Returns a ParsedSwap struct with all extracted fields
-fn parse_jupiter_instruction(data: &[u8], accounts: &[String]) -> ParsedSwap {
+/// Realized (source_mint, amount_in, amount_out) from event legs.
+fn realized(src: &str, dst: &str, legs: &[SwapLeg]) -> Option<(String, u64, u64)> {
+    if legs.is_empty() || dst.is_empty() {
+        return None;
+    }
+    let src = if src.is_empty() { legs[0].input_mint.clone() } else { src.to_string() };
+    let a_in: u64 = legs.iter().filter(|l| l.input_mint == src).fold(0u64, |a, l| a.saturating_add(l.input_amount));
+    let a_out: u64 = legs.iter().filter(|l| l.output_mint == dst).fold(0u64, |a, l| a.saturating_add(l.output_amount));
+    if a_in == 0 || a_out == 0 {
+        return None;
+    }
+    Some((src, a_in, a_out))
+}
+
+/// Parse an Anchor event payload (after EVENT_IX_TAG).
+fn parse_event(d: &[u8]) -> Vec<SwapLeg> {
+    if d.len() < 8 {
+        return vec![];
+    }
+    let body = &d[8..];
+    match <[u8; 8]>::try_from(&d[0..8]).unwrap_or_default() {
+        // SwapEvent { amm, input_mint, input_amount, output_mint, output_amount }
+        SWAP_EVENT if body.len() >= 112 => vec![SwapLeg {
+            input_mint: b58(&body[32..64]),
+            input_amount: read_u64_le(&body[64..72]),
+            output_mint: b58(&body[72..104]),
+            output_amount: read_u64_le(&body[104..112]),
+        }],
+        // SwapsEvent { swap_events: Vec<SwapEventV2 { input_mint, input_amount, output_mint, output_amount, amm }> }
+        SWAPS_EVENT if body.len() >= 4 => {
+            let n = u32::from_le_bytes(body[0..4].try_into().unwrap()) as usize;
+            let mut out = Vec::with_capacity(n.min(64));
+            for i in 0..n {
+                let o = 4 + i * 112;
+                if body.len() < o + 112 {
+                    break;
+                }
+                let e = &body[o..o + 112];
+                out.push(SwapLeg {
+                    input_mint: b58(&e[0..32]),
+                    input_amount: read_u64_le(&e[32..40]),
+                    output_mint: b58(&e[40..72]),
+                    output_amount: read_u64_le(&e[72..80]),
+                });
+            }
+            out
+        }
+        _ => vec![],
+    }
+}
+
+fn b58(b: &[u8]) -> String {
+    bs58::encode(b).into_string()
+}
+
+/// Decode a Jupiter instruction into args-level swap fields.
+fn parse_instruction(program_id: &str, data: &[u8], accounts: &[String]) -> ParsedSwap {
     if data.len() < 8 {
         return ParsedSwap::default();
     }
+    let disc: [u8; 8] = data[0..8].try_into().unwrap();
 
-    // Safe discriminator extraction
-    let discriminator: [u8; 8] = match data[0..8].try_into() {
-        Ok(d) => d,
-        Err(_) => return ParsedSwap::default(),
-    };
-
-    // Route instruction: discriminator(8) + route_plan_len(1) + ...
-    // SharedAccountsRoute: discriminator(8) + id(1) + route_plan_len(1) + ...
-    // The amount is typically a u64 after the route plan
-
-    match discriminator {
-        ROUTE_DISCRIMINATOR => parse_route_instruction(data, accounts),
-        SHARED_ACCOUNTS_ROUTE_DISCRIMINATOR => parse_shared_accounts_route(data, accounts),
-        EXACT_OUT_ROUTE_DISCRIMINATOR => parse_exact_out_route(data, accounts),
-        SHARED_ACCOUNTS_EXACT_OUT_ROUTE_DISCRIMINATOR => parse_shared_accounts_exact_out(data, accounts),
-        _ => {
-            // Try to extract amount from generic instruction format
-            parse_generic_swap(data, accounts)
+    if program_id == JUPITER_ORDER_ENGINE_PROGRAM_ID || program_id == JUPITER_ORDER_ENGINE_2_PROGRAM_ID {
+        if disc == RFQ_FILL && data.len() >= 24 && accounts.len() >= 9 {
+            return ParsedSwap {
+                name: "rfq_fill",
+                amount_in: read_u64_le(&data[8..16]),
+                amount_out: read_u64_le(&data[16..24]),
+                quoted: read_u64_le(&data[16..24]),
+                input_mint: accounts[6].clone(),
+                output_mint: accounts[8].clone(),
+                user_wallet: accounts[0].clone(),
+                ..Default::default()
+            };
         }
+        return ParsedSwap::default();
     }
-}
-
-/// Parse Route instruction (Jupiter v6)
-/// Format: discriminator(8) + route_plan + in_amount(8) + quoted_out_amount(8) + slippage_bps(2) + platform_fee_bps(1)
-fn parse_route_instruction(data: &[u8], accounts: &[String]) -> ParsedSwap {
-    // Route instructions require at least 9 accounts (same layout as SharedAccountsRoute)
-    if accounts.len() < 9 || data.len() < 24 {
+    if program_id != JUPITER_V6_PROGRAM_ID {
         return ParsedSwap::default();
     }
 
+    // (layout, args): v1 args have amounts at the tail (route_plan is variable length);
+    // v2 args have amounts right after the discriminator (and the shared `id` byte).
+    enum Args { Tail19, TailLedger11, Head(usize) }
+    let (layout, args) = match disc {
+        ROUTE_DISCRIMINATOR => (Layout { name: "route", wallet: 1, src_mint: None, dst_mint: 5, exact_out: false }, Args::Tail19),
+        ROUTE_WITH_TOKEN_LEDGER => (Layout { name: "route_with_token_ledger", wallet: 1, src_mint: None, dst_mint: 5, exact_out: false }, Args::TailLedger11),
+        EXACT_OUT_ROUTE_DISCRIMINATOR => (Layout { name: "exact_out_route", wallet: 1, src_mint: Some(5), dst_mint: 6, exact_out: true }, Args::Tail19),
+        SHARED_ACCOUNTS_ROUTE_DISCRIMINATOR => (Layout { name: "shared_accounts_route", wallet: 2, src_mint: Some(7), dst_mint: 8, exact_out: false }, Args::Tail19),
+        SHARED_ACCOUNTS_ROUTE_WITH_TOKEN_LEDGER => (Layout { name: "shared_accounts_route_with_token_ledger", wallet: 2, src_mint: Some(7), dst_mint: 8, exact_out: false }, Args::TailLedger11),
+        SHARED_ACCOUNTS_EXACT_OUT_ROUTE_DISCRIMINATOR => (Layout { name: "shared_accounts_exact_out_route", wallet: 2, src_mint: Some(7), dst_mint: 8, exact_out: true }, Args::Tail19),
+        ROUTE_V2 => (Layout { name: "route_v2", wallet: 0, src_mint: Some(3), dst_mint: 4, exact_out: false }, Args::Head(8)),
+        EXACT_OUT_ROUTE_V2 => (Layout { name: "exact_out_route_v2", wallet: 0, src_mint: Some(3), dst_mint: 4, exact_out: true }, Args::Head(8)),
+        SHARED_ACCOUNTS_ROUTE_V2 => (Layout { name: "shared_accounts_route_v2", wallet: 1, src_mint: Some(6), dst_mint: 7, exact_out: false }, Args::Head(9)),
+        SHARED_ACCOUNTS_EXACT_OUT_ROUTE_V2 => (Layout { name: "shared_accounts_exact_out_route_v2", wallet: 1, src_mint: Some(6), dst_mint: 7, exact_out: true }, Args::Head(9)),
+        _ => return ParsedSwap::default(),
+    };
+    let max_idx = layout.dst_mint.max(layout.wallet).max(layout.src_mint.unwrap_or(0));
+    if accounts.len() <= max_idx {
+        return ParsedSwap::default();
+    }
     let len = data.len();
-
-    // Amounts are usually at specific offsets after the route plan
-    // Common pattern: last 18-19 bytes contain amounts + slippage
-    if len >= 26 {
-        let amount_in = read_u64_le(&data[len - 18..len - 10]);
-        let amount_out = read_u64_le(&data[len - 10..len - 2]);
-
-        if is_valid_amount(amount_in) && amount_out < MAX_REASONABLE_AMOUNT {
-            let (input_mint, output_mint, user_wallet) = extract_mints_from_accounts(accounts);
-            return ParsedSwap {
-                amount_in,
-                amount_out,
-                input_mint,
-                output_mint,
-                user_wallet,
-            };
-        }
-    }
-
-    ParsedSwap::default()
-}
-
-/// Parse SharedAccountsRoute instruction (Jupiter v6)
-/// Most common instruction type
-fn parse_shared_accounts_route(data: &[u8], accounts: &[String]) -> ParsedSwap {
-    // SharedAccountsRoute requires at least 9 accounts:
-    // [0] token_program, [1] program_authority, [2] user_transfer_authority,
-    // [3-6] token accounts, [7] source_mint, [8] destination_mint
-    if accounts.len() < 9 || data.len() < 30 {
-        return ParsedSwap::default();
-    }
-
-    let len = data.len();
-
-    // Find in_amount and quoted_out_amount (they're 8 bytes each, near the end)
-    // Pattern: ...route_plan_data... + in_amount(8) + quoted_out_amount(8) + slippage(2) + platform_fee(1)
-    if len >= 19 {
-        let amount_in = read_u64_le(&data[len - 19..len - 11]);
-        let amount_out = read_u64_le(&data[len - 11..len - 3]);
-
-        if is_valid_amount(amount_in) && amount_out < MAX_REASONABLE_AMOUNT {
-            let (input_mint, output_mint, user_wallet) = extract_mints_from_accounts(accounts);
-            return ParsedSwap {
-                amount_in,
-                amount_out,
-                input_mint,
-                output_mint,
-                user_wallet,
-            };
-        }
-    }
-
-    // Alternative: amounts might be at a fixed offset after discriminator
-    if len >= 25 {
-        let amount_in = read_u64_le(&data[9..17]);
-        let amount_out = read_u64_le(&data[17..25]);
-
-        if is_valid_amount(amount_in) && amount_out < MAX_REASONABLE_AMOUNT {
-            let (input_mint, output_mint, user_wallet) = extract_mints_from_accounts(accounts);
-            return ParsedSwap {
-                amount_in,
-                amount_out,
-                input_mint,
-                output_mint,
-                user_wallet,
-            };
-        }
-    }
-
-    ParsedSwap::default()
-}
-
-/// Parse ExactOutRoute instruction
-fn parse_exact_out_route(data: &[u8], accounts: &[String]) -> ParsedSwap {
-    if accounts.len() < 9 || data.len() < 24 {
-        return ParsedSwap::default();
-    }
-
-    // ExactOut has out_amount specified, in_amount is maximum
-    let len = data.len();
-    if len >= 19 {
-        let amount_out = read_u64_le(&data[len - 19..len - 11]);
-        let max_amount_in = read_u64_le(&data[len - 11..len - 3]);
-
-        if is_valid_amount(max_amount_in) && amount_out < MAX_REASONABLE_AMOUNT {
-            let (input_mint, output_mint, user_wallet) = extract_mints_from_accounts(accounts);
-            return ParsedSwap {
-                amount_in: max_amount_in,
-                amount_out,
-                input_mint,
-                output_mint,
-                user_wallet,
-            };
-        }
-    }
-
-    ParsedSwap::default()
-}
-
-/// Parse SharedAccountsExactOutRoute instruction
-fn parse_shared_accounts_exact_out(data: &[u8], accounts: &[String]) -> ParsedSwap {
-    parse_exact_out_route(data, accounts)
-}
-
-/// Generic swap parsing for unknown instruction formats
-/// Uses heuristics to find likely swap amounts in instruction data
-fn parse_generic_swap(data: &[u8], accounts: &[String]) -> ParsedSwap {
-    // Require at least 9 accounts to ensure this is a real swap instruction
-    // with proper mint addresses, not an inner instruction or event
-    if accounts.len() < 9 || data.len() < 16 {
-        return ParsedSwap::default();
-    }
-
-    // Scan through data looking for reasonable u64 values
-    // Start after discriminator (8 bytes)
-    let end = data.len().saturating_sub(16);
-    for i in 8..end {
-        let val1 = read_u64_le(&data[i..i + 8]);
-        let val2 = read_u64_le(&data[i + 8..i + 16]);
-
-        // Check if values look like token amounts
-        if is_valid_amount(val1) && val2 > 0 && val2 < MAX_REASONABLE_AMOUNT {
-            let (input_mint, output_mint, user_wallet) = extract_mints_from_accounts(accounts);
-            return ParsedSwap {
-                amount_in: val1,
-                amount_out: val2,
-                input_mint,
-                output_mint,
-                user_wallet,
-            };
-        }
-    }
-
-    ParsedSwap::default()
-}
-
-/// Validate that an amount looks like a real token amount
-#[inline]
-fn is_valid_amount(amount: u64) -> bool {
-    amount >= MIN_VALID_AMOUNT && amount < MAX_REASONABLE_AMOUNT
-}
-
-/// Extract mint addresses and user wallet from accounts
-///
-/// Jupiter v6 SharedAccountsRoute layout:
-/// [0] token_program
-/// [1] program_authority
-/// [2] user_transfer_authority (user wallet / signer)
-/// [3] source_token_account (user's source ATA)
-/// [4] program_source_token_account
-/// [5] program_destination_token_account
-/// [6] destination_token_account (user's destination ATA)
-/// [7] source_mint (input mint)
-/// [8] destination_mint (output mint)
-/// [9+] optional: platform_fee_account, token2022, event_authority
-fn extract_mints_from_accounts(accounts: &[String]) -> (String, String, String) {
-    // User wallet is at [2] (user_transfer_authority / signer)
-    let user_wallet = if accounts.len() > 2 {
-        accounts[2].clone()
-    } else {
-        accounts.first().cloned().unwrap_or_default()
+    // (first, second) u64 args: exact-in => (in_amount, quoted_out), exact-out => (out_amount, quoted_in)
+    let (first, second) = match args {
+        Args::Tail19 if len >= 8 + 19 => (read_u64_le(&data[len - 19..len - 11]), read_u64_le(&data[len - 11..len - 3])),
+        Args::TailLedger11 if len >= 8 + 11 => (0, read_u64_le(&data[len - 11..len - 3])),
+        Args::Head(o) if len >= o + 16 => (read_u64_le(&data[o..o + 8]), read_u64_le(&data[o + 8..o + 16])),
+        _ => return ParsedSwap::default(),
     };
-
-    // Source mint (input) is at [7]
-    let input_mint = if accounts.len() > 7 {
-        accounts[7].clone()
+    let (amount_in, amount_out, quoted) = if layout.exact_out {
+        (second, first, second)
     } else {
-        String::new()
+        (first, second, second)
     };
-
-    // Destination mint (output) is at [8]
-    let output_mint = if accounts.len() > 8 {
-        accounts[8].clone()
-    } else {
-        String::new()
-    };
-
-    (input_mint, output_mint, user_wallet)
+    ParsedSwap {
+        name: layout.name,
+        amount_in,
+        amount_out,
+        quoted,
+        input_mint: layout.src_mint.map(|i| accounts[i].clone()).unwrap_or_default(),
+        output_mint: accounts[layout.dst_mint].clone(),
+        user_wallet: accounts[layout.wallet].clone(),
+        exact_out: layout.exact_out,
+        is_v6_route: true,
+    }
 }
 
 /// Read u64 from bytes in little-endian
@@ -322,152 +309,132 @@ fn is_jupiter_program(program_id: &str) -> bool {
 mod tests {
     use super::*;
 
-    /// Helper to create test instruction data with route discriminator
-    fn create_route_instruction(amount_in: u64, amount_out: u64) -> Vec<u8> {
-        let mut data = Vec::with_capacity(34);
-        // Route discriminator
-        data.extend_from_slice(&ROUTE_DISCRIMINATOR);
-        // Padding (route plan placeholder)
-        data.extend_from_slice(&[0u8; 8]);
-        // Amount in (little-endian)
-        data.extend_from_slice(&amount_in.to_le_bytes());
-        // Amount out (little-endian)
-        data.extend_from_slice(&amount_out.to_le_bytes());
-        // Slippage (2 bytes)
-        data.extend_from_slice(&[0u8, 0u8]);
-        data
-    }
-
-    /// Helper to create test instruction data with shared accounts route discriminator
-    fn create_shared_accounts_instruction(amount_in: u64, amount_out: u64) -> Vec<u8> {
-        let mut data = Vec::with_capacity(38);
-        // Shared accounts route discriminator
-        data.extend_from_slice(&SHARED_ACCOUNTS_ROUTE_DISCRIMINATOR);
-        // ID byte
-        data.push(0);
-        // Padding (route plan placeholder)
-        data.extend_from_slice(&[0u8; 10]);
-        // Amount in (little-endian)
-        data.extend_from_slice(&amount_in.to_le_bytes());
-        // Amount out (little-endian)
-        data.extend_from_slice(&amount_out.to_le_bytes());
-        // Slippage (2 bytes) + platform fee (1 byte)
-        data.extend_from_slice(&[0u8, 0u8, 0u8]);
-        data
-    }
-
-    /// Helper to create test accounts matching Jupiter v6 SharedAccountsRoute layout
-    fn create_test_accounts() -> Vec<String> {
-        vec![
-            "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA".to_string(), // [0] token_program
-            "ProgramAuthority1234567890123456789012345".to_string(),    // [1] program_authority
-            "UserWallet123456789012345678901234567890AB".to_string(),   // [2] user_transfer_authority
-            "SourceTokenAccount12345678901234567890ABCD".to_string(),   // [3] source_token_account
-            "ProgramSourceToken1234567890123456789012AB".to_string(),   // [4] program_source_token_account
-            "ProgramDestToken12345678901234567890123ABC".to_string(),   // [5] program_destination_token_account
-            "DestTokenAccount123456789012345678901234AB".to_string(),   // [6] destination_token_account
-            "InputMintAddress123456789012345678901234AB".to_string(),   // [7] source_mint (input)
-            "OutputMintAddress12345678901234567890ABCD".to_string(),    // [8] destination_mint (output)
-        ]
+    fn accts(n: usize) -> Vec<String> {
+        (0..n).map(|i| format!("acct{}", i)).collect()
     }
 
     #[test]
-    fn test_is_valid_amount() {
-        // Valid amounts
-        assert!(is_valid_amount(1_000_000)); // 1 token with 6 decimals
-        assert!(is_valid_amount(1_000_000_000_000)); // 1 million tokens
-        assert!(is_valid_amount(MIN_VALID_AMOUNT));
+    fn route_v2_head_args() {
+        let mut d = ROUTE_V2.to_vec();
+        d.extend_from_slice(&1_000_000u64.to_le_bytes());
+        d.extend_from_slice(&2_500u64.to_le_bytes());
+        d.extend_from_slice(&[50, 0, 0, 0, 0, 0, 0, 0, 0, 0]); // slippage, fees, empty plan
+        let p = parse_instruction(JUPITER_V6_PROGRAM_ID, &d, &accts(10));
+        assert_eq!((p.name, p.amount_in, p.amount_out), ("route_v2", 1_000_000, 2_500));
+        assert_eq!((p.user_wallet.as_str(), p.input_mint.as_str(), p.output_mint.as_str()), ("acct0", "acct3", "acct4"));
+    }
 
-        // Invalid amounts
-        assert!(!is_valid_amount(0));
-        assert!(!is_valid_amount(999)); // Below minimum
-        assert!(!is_valid_amount(MAX_REASONABLE_AMOUNT)); // At max
-        assert!(!is_valid_amount(u64::MAX)); // Way too large
+    #[test]
+    fn shared_v1_tail_args() {
+        let mut d = SHARED_ACCOUNTS_ROUTE_DISCRIMINATOR.to_vec();
+        d.push(3);
+        d.extend_from_slice(&[0u8; 13]); // route plan
+        d.extend_from_slice(&7_000u64.to_le_bytes());
+        d.extend_from_slice(&9_000u64.to_le_bytes());
+        d.extend_from_slice(&[0, 0, 0]);
+        let p = parse_instruction(JUPITER_V6_PROGRAM_ID, &d, &accts(13));
+        assert_eq!((p.amount_in, p.amount_out, p.user_wallet.as_str(), p.input_mint.as_str(), p.output_mint.as_str()), (7_000, 9_000, "acct2", "acct7", "acct8"));
+    }
+
+    #[test]
+    fn route_v1_tail_is_19_bytes() {
+        let mut d = ROUTE_DISCRIMINATOR.to_vec();
+        d.extend_from_slice(&[0u8; 9]);
+        d.extend_from_slice(&5_000u64.to_le_bytes());
+        d.extend_from_slice(&6_000u64.to_le_bytes());
+        d.extend_from_slice(&[0, 0, 0]);
+        let p = parse_instruction(JUPITER_V6_PROGRAM_ID, &d, &accts(9));
+        assert_eq!((p.amount_in, p.amount_out, p.output_mint.as_str(), p.input_mint.as_str()), (5_000, 6_000, "acct5", ""));
+    }
+
+    #[test]
+    fn exact_out_v2_swaps_order() {
+        let mut d = EXACT_OUT_ROUTE_V2.to_vec();
+        d.extend_from_slice(&100u64.to_le_bytes()); // out_amount
+        d.extend_from_slice(&250u64.to_le_bytes()); // quoted_in
+        d.extend_from_slice(&[0u8; 10]);
+        let p = parse_instruction(JUPITER_V6_PROGRAM_ID, &d, &accts(10));
+        assert!(p.exact_out);
+        assert_eq!((p.amount_in, p.amount_out), (250, 100));
+    }
+
+    #[test]
+    fn rfq_fill() {
+        let mut d = RFQ_FILL.to_vec();
+        d.extend_from_slice(&11u64.to_le_bytes());
+        d.extend_from_slice(&22u64.to_le_bytes());
+        d.extend_from_slice(&0i64.to_le_bytes());
+        let p = parse_instruction(JUPITER_ORDER_ENGINE_PROGRAM_ID, &d, &accts(11));
+        assert_eq!((p.name, p.amount_in, p.amount_out, p.input_mint.as_str(), p.output_mint.as_str(), p.user_wallet.as_str()), ("rfq_fill", 11, 22, "acct6", "acct8", "acct0"));
+        assert!(!p.is_v6_route);
+    }
+
+    #[test]
+    fn unknown_and_other_programs_yield_nothing() {
+        let d = vec![0xFFu8; 64];
+        assert_eq!(parse_instruction(JUPITER_V6_PROGRAM_ID, &d, &accts(20)), ParsedSwap::default());
+        assert_eq!(parse_instruction("DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M", &ROUTE_V2, &accts(20)), ParsedSwap::default());
+        assert_eq!(parse_instruction(JUPITER_V6_PROGRAM_ID, &[1, 2, 3], &accts(20)), ParsedSwap::default());
+    }
+
+    #[test]
+    fn too_few_accounts_rejected() {
+        let mut d = ROUTE_V2.to_vec();
+        d.extend_from_slice(&[1u8; 26]);
+        assert_eq!(parse_instruction(JUPITER_V6_PROGRAM_ID, &d, &accts(4)), ParsedSwap::default());
+    }
+
+    fn pk(n: u8) -> [u8; 32] { [n; 32] }
+
+    #[test]
+    fn swaps_event_and_realized() {
+        let mut d = SWAPS_EVENT.to_vec();
+        d.extend_from_slice(&2u32.to_le_bytes());
+        for (i, o, ai, ao) in [(1u8, 2u8, 100u64, 50u64), (2, 3, 50, 7)] {
+            d.extend_from_slice(&pk(i)); d.extend_from_slice(&ai.to_le_bytes());
+            d.extend_from_slice(&pk(o)); d.extend_from_slice(&ao.to_le_bytes());
+            d.extend_from_slice(&pk(9));
+        }
+        let legs = parse_event(&d);
+        assert_eq!(legs.len(), 2);
+        let (src, a, b) = realized("", &b58(&pk(3)), &legs).unwrap();
+        assert_eq!((src, a, b), (b58(&pk(1)), 100, 7));
+    }
+
+    #[test]
+    fn swap_event_v1_split_route() {
+        let mk = |i: u8, o: u8, ai: u64, ao: u64| {
+            let mut d = SWAP_EVENT.to_vec();
+            d.extend_from_slice(&pk(9)); d.extend_from_slice(&pk(i)); d.extend_from_slice(&ai.to_le_bytes());
+            d.extend_from_slice(&pk(o)); d.extend_from_slice(&ao.to_le_bytes());
+            parse_event(&d)
+        };
+        let mut legs = mk(1, 2, 60, 30);
+        legs.extend(mk(1, 2, 40, 21));
+        let (_, a, b) = realized(&b58(&pk(1)), &b58(&pk(2)), &legs).unwrap();
+        assert_eq!((a, b), (100, 51));
+        assert!(realized(&b58(&pk(1)), &b58(&pk(5)), &legs).is_none());
+    }
+
+    #[test]
+    fn fee_event_decodes() {
+        let mut d = FEE_EVENT.to_vec();
+        d.extend_from_slice(&pk(1)); d.extend_from_slice(&pk(2)); d.extend_from_slice(&235_748_656u64.to_le_bytes());
+        assert_eq!(parse_fee_event(&d), Some((b58(&pk(2)), 235_748_656)));
+        assert_eq!(parse_fee_event(&SWAP_EVENT), None);
     }
 
     #[test]
     fn test_read_u64_le() {
-        let data = [0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
-        assert_eq!(read_u64_le(&data), 1);
-
-        let data = [0x00, 0xCA, 0x9A, 0x3B, 0x00, 0x00, 0x00, 0x00]; // 1 billion
-        assert_eq!(read_u64_le(&data), 1_000_000_000);
-
-        // Short data returns 0
+        assert_eq!(read_u64_le(&[1, 0, 0, 0, 0, 0, 0, 0]), 1);
         assert_eq!(read_u64_le(&[1, 2, 3]), 0);
-        assert_eq!(read_u64_le(&[]), 0);
-    }
-
-    #[test]
-    fn test_extract_mints_from_accounts() {
-        let accounts = create_test_accounts();
-        let (input_mint, output_mint, user_wallet) = extract_mints_from_accounts(&accounts);
-
-        assert_eq!(user_wallet, "UserWallet123456789012345678901234567890AB");
-        assert_eq!(input_mint, "InputMintAddress123456789012345678901234AB");
-        assert_eq!(output_mint, "OutputMintAddress12345678901234567890ABCD");
-    }
-
-    #[test]
-    fn test_extract_mints_empty_accounts() {
-        let accounts: Vec<String> = vec![];
-        let (input_mint, output_mint, user_wallet) = extract_mints_from_accounts(&accounts);
-
-        assert!(user_wallet.is_empty());
-        assert!(input_mint.is_empty());
-        assert!(output_mint.is_empty());
-    }
-
-    #[test]
-    fn test_parse_jupiter_instruction_short_data() {
-        let short_data = vec![0u8; 5];
-        let accounts = create_test_accounts();
-
-        let result = parse_jupiter_instruction(&short_data, &accounts);
-
-        assert_eq!(result.amount_in, 0);
-        assert_eq!(result.amount_out, 0);
-    }
-
-    #[test]
-    fn test_parse_jupiter_instruction_unknown_discriminator() {
-        let mut data = vec![0xFFu8; 32]; // Unknown discriminator
-        // Add some amount-like values
-        let amount_in: u64 = 1_000_000_000;
-        let amount_out: u64 = 500_000_000;
-        data[8..16].copy_from_slice(&amount_in.to_le_bytes());
-        data[16..24].copy_from_slice(&amount_out.to_le_bytes());
-
-        let accounts = create_test_accounts();
-        let result = parse_jupiter_instruction(&data, &accounts);
-
-        // Generic parser should find the amounts
-        assert_eq!(result.amount_in, amount_in);
-        assert_eq!(result.amount_out, amount_out);
     }
 
     #[test]
     fn test_is_jupiter_program() {
-        // Valid Jupiter programs
         assert!(is_jupiter_program("JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"));
-        assert!(is_jupiter_program("JUP4Fb2cqiRUcaTHdrPC8h2gNsA2ETXiPDD33WcGuJB"));
-        assert!(is_jupiter_program("jupoNjAxXgZ4rjzxzPMP4oxduvQsQtZzyknqvzYNrNu")); // Limit orders
-        assert!(is_jupiter_program("DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M")); // DCA
-
-        // Invalid programs
-        assert!(!is_jupiter_program("RandomProgram123456789012345678901234567"));
+        assert!(is_jupiter_program("j1o2qRpjcyUwEvwtcfhEQefh773ZgjxcVRry7LDqg5X"));
+        assert!(is_jupiter_program("61DFfeTKM7trxYcPQCM78bJ794ddZprZpAwAnLiwTpYH"));
         assert!(!is_jupiter_program("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"));
-        assert!(!is_jupiter_program(""));
-    }
-
-    #[test]
-    fn test_parsed_swap_default() {
-        let swap = ParsedSwap::default();
-
-        assert_eq!(swap.amount_in, 0);
-        assert_eq!(swap.amount_out, 0);
-        assert!(swap.input_mint.is_empty());
-        assert!(swap.output_mint.is_empty());
-        assert!(swap.user_wallet.is_empty());
     }
 }

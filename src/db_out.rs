@@ -47,8 +47,8 @@ pub fn db_out(
             continue;
         }
 
-        // Create unique swap ID: transaction_id:slot:program
-        let swap_id = format!("{}:{}:{}", trade.transaction_id, trade.slot, trade.program_id);
+        // Unique swap ID: transaction_id:instruction_index (a tx can hold several swaps)
+        let swap_id = format!("{}:{}", trade.transaction_id, trade.instruction_index);
 
         // Insert individual swap record
         tables
@@ -61,7 +61,36 @@ pub fn db_out(
             .set("amount_out", trade.amount_out.to_string())
             .set("input_mint", &trade.input_mint)
             .set("output_mint", &trade.output_mint)
-            .set("user_wallet", &trade.user_wallet);
+            .set("user_wallet", &trade.user_wallet)
+            .set("instruction_type", &trade.instruction_type)
+            .set("instruction_index", trade.instruction_index as i64)
+            .set("quoted_amount", trade.quoted_amount.to_string())
+            .set("amount_source", &trade.amount_source)
+            .set("input_stock_ticker", &trade.input_stock_ticker)
+            .set("output_stock_ticker", &trade.output_stock_ticker)
+            .set("platform_fee_amount", trade.platform_fee_amount.to_string())
+            .set("platform_fee_mint", &trade.platform_fee_mint);
+
+        // Tokenized-stock daily volume per underlying ticker
+        let date = format_date(trade.block_time);
+        if !trade.output_stock_ticker.is_empty() {
+            let usd = usd_amount(&trade.input_mint, trade.amount_in);
+            tables
+                .upsert_row("stock_daily_volume", [("ticker", trade.output_stock_ticker.clone()), ("date", date.clone())])
+                .add("buy_count", 1i64)
+                .add("shares_bought_raw", trade.amount_out.to_string())
+                .add("usd_volume_raw", usd.to_string())
+                .set("stock_mint", &trade.output_mint);
+        }
+        if !trade.input_stock_ticker.is_empty() {
+            let usd = usd_amount(&trade.output_mint, trade.amount_out);
+            tables
+                .upsert_row("stock_daily_volume", [("ticker", trade.input_stock_ticker.clone()), ("date", date.clone())])
+                .add("sell_count", 1i64)
+                .add("shares_sold_raw", trade.amount_in.to_string())
+                .add("usd_volume_raw", usd.to_string())
+                .set("stock_mint", &trade.input_mint);
+        }
 
         // Calculate "price" as ratio (amount_out / amount_in scaled by 1e6)
         // This gives us a relative price for candle tracking
@@ -189,6 +218,16 @@ pub fn db_out(
     }
 
     Ok(tables.to_database_changes())
+}
+
+/// USD stablecoins on Solana (6 decimals): USDC, USDT, USDG. Returns the raw (micro-USD) amount or 0.
+fn usd_amount(mint: &str, amount: u64) -> u64 {
+    match mint {
+        "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+        | "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB"
+        | "2u1tszSeqZ3qBWF3uNGPFc8TzMk2tdiwknnRMWGWjGWH" => amount,
+        _ => 0,
+    }
 }
 
 /// Format Unix timestamp to YYYY-MM-DD date string

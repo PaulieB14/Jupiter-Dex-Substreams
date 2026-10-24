@@ -20,6 +20,14 @@ CREATE TABLE IF NOT EXISTS jupiter_swaps (
     input_mint String,
     output_mint String,
     user_wallet String,
+    instruction_type LowCardinality(String),
+    instruction_index UInt32,
+    quoted_amount UInt256,
+    amount_source LowCardinality(String),
+    input_stock_ticker LowCardinality(String),
+    output_stock_ticker LowCardinality(String),
+    platform_fee_amount UInt256,
+    platform_fee_mint String,
     date Date MATERIALIZED toDate(fromUnixTimestamp(block_time))
 ) ENGINE = MergeTree()
 PARTITION BY toYYYYMM(date)
@@ -386,3 +394,16 @@ FROM hourly_stats
 WHERE hour >= toString(toStartOfHour(now() - INTERVAL 24 HOUR))
 GROUP BY hour
 ORDER BY hour DESC;
+
+-- Tokenized stocks (xStocks) daily volume per underlying ticker
+CREATE TABLE IF NOT EXISTS stock_daily_volume (
+    ticker String,
+    date String,
+    stock_mint String,
+    buy_count Int64,
+    sell_count Int64,
+    shares_bought_raw UInt256,
+    shares_sold_raw UInt256,
+    usd_volume_raw UInt256
+) ENGINE = ReplacingMergeTree()
+ORDER BY (ticker, date);
